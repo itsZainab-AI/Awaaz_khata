@@ -1,0 +1,6 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+samples/gnani_response.mp3
+samples/gnani_response.wav

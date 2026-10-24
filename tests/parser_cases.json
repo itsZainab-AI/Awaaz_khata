@@ -1,0 +1,94 @@
+[
+  {
+    "transcript": "Ramesh ko paanch sau udhaar diya",
+    "expected": [{"person": "Ramesh", "amount": 500, "type": "credit_given", "note": "udhaar diya"}]
+  },
+  {
+    "transcript": "Ramesh ji ko paanch sau udhaar diya",
+    "expected": [{"person": "Ramesh", "amount": 500, "type": "credit_given", "note": "udhaar diya"}]
+  },
+  {
+    "transcript": "Sita ne dedh hazaar rupaye dekar purana udhaar chukaya",
+    "expected": [{"person": "Sita", "amount": 1500, "type": "payment_received", "note": "purana udhaar chukaya"}]
+  },
+  {
+    "transcript": "Mohan ko do hazaar ka maal udhaar diya aur Geeta se teen sau rupaye vasool hue",
+    "expected": [
+      {"person": "Mohan", "amount": 2000, "type": "credit_given", "note": "maal udhaar diya"},
+      {"person": "Geeta", "amount": 300, "type": "payment_received", "note": "vasool hue"}
+    ]
+  },
+  {
+    "transcript": "Ramesh la paanch she udhaar dile",
+    "expected": [{"person": "Ramesh", "amount": 500, "type": "credit_given", "note": "udhaar dile"}]
+  },
+  {
+    "transcript": "Sunita kadun ek hazaar rupaye aale, tine udhaar parat kela",
+    "expected": [{"person": "Sunita", "amount": 1000, "type": "payment_received", "note": "udhaar parat kela"}]
+  },
+  {
+    "transcript": "Amit ko saat sau udhaar diya aur Rohit ne do sau wapas kiye",
+    "expected": [
+      {"person": "Amit", "amount": 700, "type": "credit_given", "note": "udhaar diya"},
+      {"person": "Rohit", "amount": 200, "type": "payment_received", "note": "wapas kiye"}
+    ]
+  },
+  {
+    "transcript": "Kaka ko sava hazaar ka samaan udhaar par diya",
+    "expected": [{"person": "Kaka", "amount": 1250, "type": "credit_given", "note": "samaan udhaar par diya"}]
+  },
+  {
+    "transcript": "Meena ne dedh hazaar ka purana baki chukaya aur Kiran ne paanch sau jama kiye",
+    "expected": [
+      {"person": "Meena", "amount": 1500, "type": "payment_received", "note": "purana baki chukaya"},
+      {"person": "Kiran", "amount": 500, "type": "payment_received", "note": "jama kiye"}
+    ]
+  },
+  {
+    "transcript": "Raju ko do lakh rupaye udhaar diye",
+    "expected": [{"person": "Raju", "amount": 200000, "type": "credit_given", "note": "udhaar diye"}]
+  },
+  {
+    "transcript": "Farah se 2500 rupaye payment mila",
+    "expected": [{"person": "Farah", "amount": 2500, "type": "payment_received", "note": "payment mila"}]
+  },
+  {
+    "transcript": "Nilesh la don hajar udhar dile ani Kavita kadun panchshe parat aale",
+    "expected": [
+      {"person": "Nilesh", "amount": 2000, "type": "credit_given", "note": "udhar dile"},
+      {"person": "Kavita", "amount": 500, "type": "payment_received", "note": "parat aale"}
+    ]
+  },
+  {
+    "transcript": "Geeta ko ek crore ka maal udhaar diya",
+    "expected": [{"person": "Geeta", "amount": 10000000, "type": "credit_given", "note": "maal udhaar diya"}]
+  },
+  {
+    "transcript": "आज रमेश को पाँच सौ उधार दिए",
+    "expected": [{"person": "रमेश", "amount": 500, "type": "credit_given", "note": "उधार दिए"}]
+  },
+  {
+    "transcript": "आज सिर्फ दुकान में माल आया, किसी ग्राहक का लेनदेन नहीं हुआ",
+    "clarification": true
+  },
+  {
+    "transcript": "Kal Ramesh ko paise diye",
+    "clarification": true
+  },
+  {
+    "transcript": "Ramesh ne paise diye",
+    "clarification": true
+  },
+  {
+    "transcript": "Paanch sau udhaar diya",
+    "clarification": true
+  },
+  {
+    "transcript": "Suresh ko do hazaar diye",
+    "clarification": true
+  },
+  {
+    "transcript": "Sita ka balance batao, koi payment ya naya udhaar nahi hua",
+    "clarification": true
+  }
+]
