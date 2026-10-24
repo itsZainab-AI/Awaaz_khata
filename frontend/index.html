@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f8f4eb">
+    <meta name="description" content="A warm, voice-first khata for your everyday shop ledger.">
+    <title>Awaaz Khata — your friendly shop ledger</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/frontend/styles.css">
+    <script src="/frontend/app.js" defer></script>
+  </head>
+  <body>
+    <div class="splash-screen" id="splash-screen" aria-hidden="true">
+      <div class="splash-content">
+        <span class="splash-mark">आ</span>
+        <p class="splash-title">Awaaz Khata</p>
+        <p class="splash-tagline">Your everyday shop khata</p>
+        <span class="splash-loader" aria-hidden="true"></span>
+      </div>
+    </div>
+    <main class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Awaaz Khata home">
+          <span class="brand-mark" aria-hidden="true">आ</span>
+          <span>Awaaz Khata</span>
+        </a>
+        <label class="language-control">
+          <span class="sr-only">Recording language</span>
+          <select id="language" aria-label="Recording language">
+            <option value="hi-IN" data-speech="hi-en">हिन्दी</option>
+            <option value="mr-IN" data-speech="mr-IN">मराठी</option>
+            <option value="en-IN" data-speech="en-IN">English</option>
+          </select>
+          <span class="select-chevron" aria-hidden="true">⌄</span>
+        </label>
+      </header>
+
+      <section class="welcome">
+        <p class="eyebrow">YOUR EVERYDAY SHOP KHATA</p>
+        <h1>A little easier,<br><span>one conversation at a time.</span></h1>
+        <p class="welcome-copy">Tell me what happened. I’ll listen, write it down, and wait for your okay.</p>
+      </section>
+
+      <section class="voice-card" aria-labelledby="voice-heading">
+        <div class="voice-card-heading">
+          <div>
+            <p class="eyebrow">ADD AN ENTRY</p>
+            <h2 id="voice-heading">What should we note?</h2>
+          </div>
+          <span class="listen-badge"><span class="status-dot"></span><span id="recording-status">Ready when you are</span></span>
+        </div>
+        <div class="mic-area">
+          <button class="mic-button" id="mic-button" type="button" aria-label="Hold to record">
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <rect x="11" y="4" width="10" height="17" rx="5"></rect>
+              <path d="M7 15v1a9 9 0 0 0 18 0v-1M16 25v4m-5 0h10"></path>
+            </svg>
+          </button>
+          <p class="mic-hint" id="mic-hint">Press and hold to talk<br><span>Let go when you’re finished</span></p>
+        </div>
+        <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+        <audio id="reply-audio" controls hidden></audio>
+
+        <div class="transcript-block" id="transcript-block" hidden>
+          <p class="eyebrow">I HEARD</p>
+          <p class="transcript-text" id="transcript"></p>
+        </div>
+
+        <div class="clarification-block" id="clarification-block" hidden>
+          <span class="clarification-icon" aria-hidden="true">?</span>
+          <div>
+            <p class="eyebrow">ONE QUICK QUESTION</p>
+            <p id="clarification-question"></p>
+          </div>
+        </div>
+
+        <div class="entries-block" id="entries-block" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">BEFORE IT GOES IN YOUR BOOK</p>
+              <h3>Does this look right?</h3>
+            </div>
+            <button class="text-button" id="add-entry" type="button">+ Add entry</button>
+          </div>
+          <div class="entry-list" id="entry-list"></div>
+          <div class="confirm-actions">
+            <button class="button button-quiet" id="discard-button" type="button">Not now</button>
+            <button class="button button-primary" id="confirm-button" type="button">Looks good, save it <span aria-hidden="true">→</span></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="ledger-section" aria-labelledby="ledger-heading">
+        <div class="ledger-heading">
+          <div>
+            <p class="eyebrow">YOUR PEOPLE</p>
+            <h2 id="ledger-heading">Who owes what</h2>
+          </div>
+          <button class="refresh-button" id="refresh-ledger" type="button" aria-label="Refresh ledger">↻</button>
+        </div>
+        <div class="ledger-list" id="ledger-list" aria-live="polite">
+          <div class="empty-ledger">
+            <span aria-hidden="true">✳</span>
+            <p>Your khata is ready.<br><span>New entries will find a home here.</span></p>
+          </div>
+        </div>
+        <p class="ledger-footnote">A kind reminder goes a long way. 🌿</p>
+      </section>
+
+      <footer class="page-footer">
+        <span class="footer-flower" aria-hidden="true">✳</span>
+        <span>Made for the little things that matter.</span>
+      </footer>
+    </main>
+  </body>
+</html>
