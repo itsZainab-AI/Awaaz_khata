@@ -5,9 +5,13 @@ import { emitParticles, vibrate, showNotice } from './effects.js';
 
 const ui = {
   splash: document.querySelector('#splash-screen'),
+  heroPanel: document.querySelector('#hero-panel'),
+  summaryCard: document.querySelector('.summary-card'),
   micButton: document.querySelector('#mic-button'),
   micStatus: document.querySelector('#mic-status'),
   transcriptText: document.querySelector('#transcript-text'),
+  transcriptOriginal: document.querySelector('#transcript-original'),
+  transcriptFeedback: document.querySelector('#transcript-feedback'),
   notice: document.querySelector('#notice'),
   audio: document.querySelector('#reply-audio'),
   confirmButton: document.querySelector('#confirm-button'),
@@ -15,6 +19,9 @@ const ui = {
   ledgerList: document.querySelector('#ledger-list'),
   confirmationStack: document.querySelector('#confirmation-stack'),
   entryCardList: document.querySelector('#entry-card-list'),
+  confirmationActions: document.querySelector('#confirmation-actions'),
+  summaryStats: document.querySelector('#summary-stats'),
+  summaryChart: document.querySelector('#summary-chart'),
   refreshLedger: document.querySelector('#refresh-ledger'),
   languageButtons: [...document.querySelectorAll('#language-toggle button')],
   customerDrawer: document.querySelector('#customer-drawer'),
@@ -41,6 +48,9 @@ const state = {
   isBusy: false,
   pointerId: null,
   isProcessing: false,
+  selectedLanguage: 'hi-en',
+  originalTranscript: '',
+  transcriptFeedback: '',
   voiceLanguage: 'hi-en',
   speechLanguage: 'hi-en',
   loadedLedger: [],
@@ -56,6 +66,7 @@ const setLanguage = (value) => {
     'mr-IN': { language: 'mr-IN', speechLanguage: 'mr-IN' },
   };
   const resolved = map[value] || map['hi-en'];
+  state.selectedLanguage = value;
   state.voiceLanguage = resolved.language;
   state.speechLanguage = resolved.speechLanguage;
   ui.languageButtons.forEach((button) => {
@@ -63,6 +74,73 @@ const setLanguage = (value) => {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
+  if (state.originalTranscript) {
+    setTranscript(state.originalTranscript, state.transcriptFeedback);
+  }
+};
+
+const devanagariLetters = {
+  क: 'k', ख: 'kh', ग: 'g', घ: 'gh', ङ: 'ng',
+  च: 'ch', छ: 'chh', ज: 'j', झ: 'jh', ञ: 'ny',
+  ट: 't', ठ: 'th', ड: 'd', ढ: 'dh', ण: 'n',
+  त: 't', थ: 'th', द: 'd', ध: 'dh', न: 'n',
+  प: 'p', फ: 'ph', ब: 'b', भ: 'bh', म: 'm',
+  य: 'y', र: 'r', ल: 'l', व: 'v', श: 'sh',
+  ष: 'sh', स: 's', ह: 'h', ळ: 'l',
+};
+const devanagariVowels = {
+  'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo',
+  'ऋ': 'ri', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au',
+  'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo',
+  'ृ': 'ri', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au',
+};
+const dependentVowelMarks = new Set(['ा', 'ि', 'ी', 'ु', 'ू', 'ृ', 'े', 'ै', 'ो', 'ौ']);
+
+const transliterateDevanagari = (text) => {
+  let result = '';
+  let pendingConsonant = false;
+  for (const character of text) {
+    if (devanagariLetters[character]) {
+      if (pendingConsonant) result += 'a';
+      result += devanagariLetters[character];
+      pendingConsonant = true;
+    } else if (devanagariVowels[character]) {
+      if (pendingConsonant || !dependentVowelMarks.has(character)) {
+        result += devanagariVowels[character];
+      }
+      pendingConsonant = false;
+    } else if (character === '्') {
+      pendingConsonant = false;
+    } else if (character === 'ं' || character === 'ँ') {
+      result += 'n';
+      pendingConsonant = false;
+    } else if (character === 'ः') {
+      result += 'h';
+      pendingConsonant = false;
+    } else if (/[०-९]/.test(character)) {
+      result += String('०१२३४५६७८९'.indexOf(character));
+    } else if (character === '़') {
+      continue;
+    } else {
+      pendingConsonant = false;
+      result += character;
+    }
+  }
+  return result;
+};
+
+const setTranscript = (transcript, feedback = '') => {
+  const original = String(transcript || '').trim();
+  state.originalTranscript = original;
+  state.transcriptFeedback = feedback;
+  const display = state.selectedLanguage === 'hi-en'
+    ? transliterateDevanagari(original)
+    : original;
+  ui.transcriptText.textContent = display || 'The recording is ready to be translated.';
+  ui.transcriptOriginal.textContent = original ? `Original: ${original}` : '';
+  ui.transcriptOriginal.hidden = !original;
+  ui.transcriptFeedback.textContent = feedback;
+  ui.transcriptFeedback.hidden = !feedback;
 };
 
 const setMicStatus = (message) => {
@@ -87,6 +165,7 @@ const resetDraft = () => {
   state.confirmationId = null;
   state.entries = [];
   ui.confirmationStack.hidden = true;
+  ui.confirmationActions.hidden = false;
   ui.entryCardList.replaceChildren();
   ui.audio.pause();
   ui.audio.hidden = true;
@@ -304,9 +383,40 @@ const submitVoice = async (waveBlob) => {
       throw new Error(result.detail || 'Voice processing failed.');
     }
 
-    ui.transcriptText.textContent = result.transcript || 'I heard the recording, but there was no clear transcript this time.';
-    if (result.status === 'clarification_required') {
-      showTransientNotice('Please confirm the missing detail before we save anything.', '');
+    if (result.status === 'unrecognized' || result.status === 'clarification_required') {
+      const message = result.message || result.clarification_question || 'Samajh nahi aaya, phir se bolo.';
+      setTranscript(result.transcript, message);
+      showTransientNotice(message, '');
+      if (result.audio_base64) {
+        await handleAudioReply(result.audio_base64, result.audio_content_type || 'audio/mpeg');
+      }
+      return;
+    }
+
+    setTranscript(result.transcript);
+    if (result.status === 'customer_created') {
+      ui.entryCardList.replaceChildren();
+      const card = document.createElement('div');
+      card.className = 'customer-created-card';
+      const icon = document.createElement('span');
+      icon.className = 'customer-created-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = '✓';
+      const copy = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = result.confirmation_text || `${result.customer.name} ka khata ban gaya`;
+      const detail = document.createElement('p');
+      detail.textContent = 'Customer added with a ₹0 balance.';
+      copy.append(title, detail);
+      card.append(icon, copy);
+      ui.entryCardList.appendChild(card);
+      ui.confirmationActions.hidden = true;
+      ui.confirmationStack.hidden = false;
+      showTransientNotice(title.textContent, 'success');
+      await loadLedger();
+      if (result.audio_base64) {
+        await handleAudioReply(result.audio_base64, result.audio_content_type || 'audio/mpeg');
+      }
       return;
     }
 
@@ -491,10 +601,28 @@ const loadLedger = async () => {
     if (!response.ok) throw new Error(result.detail || 'The ledger could not be loaded.');
 
     const customers = Array.isArray(result.customers) ? result.customers : [];
+    const summary = result.summary || {};
+    const transactionCount = Number(summary.transaction_count || 0);
+    const hasTransactions = transactionCount > 0;
     state.loadedLedger = customers;
     ui.ledgerList.replaceChildren();
 
-    if (!customers.length) {
+    ui.summaryCard.hidden = !hasTransactions;
+    ui.heroPanel.classList.toggle('has-no-transactions', !hasTransactions);
+    ui.summaryStats.hidden = !hasTransactions;
+    ui.summaryChart.hidden = !hasTransactions;
+    if (hasTransactions) {
+      const creditValue = Number(summary.credit || 0);
+      const paidValue = Number(summary.paid || 0);
+      ui.summaryStats.querySelector('[data-summary="credit"]').textContent =
+        `₹${creditValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+      ui.summaryStats.querySelector('[data-summary="paid"]').textContent =
+        `₹${paidValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+      ui.summaryStats.querySelector('[data-summary="customers"]').textContent =
+        String(customers.length);
+    }
+
+    if (!hasTransactions) {
       const empty = document.createElement('div');
       empty.className = 'ledger-empty-state';
       const illustration = document.createElement('span');
@@ -505,9 +633,16 @@ const loadLedger = async () => {
       title.textContent = 'Your khata is ready';
       const message = document.createElement('p');
       message.textContent = 'Your first voice note will create a customer record.';
-      empty.append(illustration, title, message);
+      const example = document.createElement('p');
+      example.className = 'ledger-example';
+      example.textContent = 'Try saying: Ramesh ko 500 udhaar diya';
+      const playButton = document.createElement('button');
+      playButton.type = 'button';
+      playButton.className = 'ledger-example-button';
+      playButton.dataset.playExample = 'true';
+      playButton.textContent = '▶ Hear example';
+      empty.append(illustration, title, message, example, playButton);
       ui.ledgerList.appendChild(empty);
-      return;
     }
 
     customers.forEach((customer) => {
@@ -516,6 +651,19 @@ const loadLedger = async () => {
     });
   } catch (error) {
     showTransientNotice(error.message || 'The ledger could not be loaded.', 'error');
+  }
+};
+
+const playExampleSentence = async () => {
+  try {
+    const response = await fetch(
+      `/voice-example?speech_language=${encodeURIComponent(state.speechLanguage)}`,
+    );
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || 'The example could not be spoken.');
+    await handleAudioReply(result.audio_base64, result.audio_content_type || 'audio/mpeg');
+  } catch (error) {
+    showTransientNotice(error.message || 'The example could not be played.', 'error');
   }
 };
 
@@ -608,6 +756,9 @@ ui.micButton.addEventListener('keyup', (event) => {
 ui.confirmButton.addEventListener('click', confirmEntries);
 ui.discardButton.addEventListener('click', discardEntries);
 ui.refreshLedger.addEventListener('click', loadLedger);
+ui.ledgerList.addEventListener('click', (event) => {
+  if (event.target.closest('[data-play-example]')) playExampleSentence();
+});
 ui.closeDrawer.addEventListener('click', closeCustomerDrawer);
 ui.sendReminder.addEventListener('click', sendReminder);
 ui.customerDrawer.addEventListener('click', (event) => {

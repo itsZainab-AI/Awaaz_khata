@@ -35,6 +35,18 @@ def initialize_database(database_path: Path) -> None:
         connection.executescript(SCHEMA)
 
 
+def create_customer(database_path: Path, name: str) -> dict:
+    with closing(sqlite3.connect(database_path)) as connection, connection:
+        connection.execute(
+            "INSERT OR IGNORE INTO customers (name) VALUES (?)",
+            (name,),
+        )
+    customer = get_customer(database_path, name)
+    if customer is None:
+        raise RuntimeError("Could not find or create the customer.")
+    return customer
+
+
 def stage_confirmation(
     database_path: Path,
     confirmation_id: str,
@@ -71,6 +83,24 @@ def get_ledger(database_path: Path) -> list[dict]:
             """
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_ledger_summary(database_path: Path) -> dict:
+    with closing(sqlite3.connect(database_path)) as connection:
+        row = connection.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN type = 'credit_given' THEN amount ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN type = 'payment_received' THEN amount ELSE 0 END), 0),
+                COUNT(*)
+            FROM transactions
+            """
+        ).fetchone()
+    return {
+        "credit": row[0],
+        "paid": row[1],
+        "transaction_count": row[2],
+    }
 
 
 def get_customer(database_path: Path, name: str) -> dict | None:

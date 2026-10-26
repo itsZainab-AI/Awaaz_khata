@@ -50,7 +50,7 @@
       </header>
 
       <main class="main-stage">
-        <section class="hero-panel glass-card">
+        <section class="hero-panel glass-card" id="hero-panel">
           <div class="hero-copy">
             <p class="eyebrow">Voice-led ledger</p>
             <h2>Khata, as easy as a quick hello.</h2>
@@ -72,7 +72,7 @@
             <p class="mic-status" id="mic-status">Press & hold to record</p>
           </div>
 
-          <aside class="summary-card glass-card">
+          <aside class="summary-card glass-card" hidden>
             <div class="summary-header">
               <div>
                 <p class="eyebrow">Aaj ka hisaab</p>
@@ -80,21 +80,21 @@
               </div>
               <span class="summary-pill">Live</span>
             </div>
-            <div class="summary-stats">
+            <div class="summary-stats" id="summary-stats" hidden>
               <div>
-                <strong data-value="14">₹0</strong>
+                <strong data-summary="credit">₹0</strong>
                 <span>Credit</span>
               </div>
               <div>
-                <strong data-value="9">₹0</strong>
+                <strong data-summary="paid">₹0</strong>
                 <span>Paid</span>
               </div>
               <div>
-                <strong data-value="5">₹0</strong>
+                <strong data-summary="customers">0</strong>
                 <span>Customers</span>
               </div>
             </div>
-            <div class="mini-chart" aria-hidden="true">
+            <div class="mini-chart" id="summary-chart" aria-hidden="true" hidden>
               <span style="--i: 0.2"></span>
               <span style="--i: 0.43"></span>
               <span style="--i: 0.58"></span>
@@ -107,17 +107,19 @@
         </section>
 
         <section class="content-grid">
-          <div class="transcript-panel glass-card">
+          <div class="transcript-panel glass-card" id="transcript-panel">
             <div class="panel-header">
               <p class="eyebrow">Transcript</p>
               <span class="status-dot"></span>
             </div>
             <div class="transcript-box" id="transcript-box">
               <p id="transcript-text">The recording is ready to be translated.</p>
+              <p id="transcript-original" class="transcript-original" hidden></p>
+              <p id="transcript-feedback" class="transcript-feedback" hidden></p>
             </div>
-            <div class="confirmation-stack" id="confirmation-stack" hidden>
+            <div class="confirmation-stack" id="confirmation-stack" aria-live="polite" hidden>
               <div class="confirmation-card" id="entry-card-list"></div>
-              <div class="action-row">
+              <div class="action-row" id="confirmation-actions">
                 <button type="button" class="ghost-btn" id="discard-button">Not now</button>
                 <button type="button" class="primary-btn" id="confirm-button">Save entry</button>
               </div>

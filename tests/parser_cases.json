@@ -1,5 +1,25 @@
 [
   {
+    "transcript": "Ramesh ke naam se khata banao",
+    "expected": [{"person": "Ramesh", "amount": null, "type": "create_customer", "note": ""}]
+  },
+  {
+    "transcript": "Sita ke naam se khata bana do",
+    "expected": [{"person": "Sita", "amount": null, "type": "create_customer", "note": ""}]
+  },
+  {
+    "transcript": "Amit ji ke naam se khata khol do",
+    "expected": [{"person": "Amit", "amount": null, "type": "create_customer", "note": ""}]
+  },
+  {
+    "transcript": "रमेश के नाम से खाता बनाओ",
+    "expected": [{"person": "रमेश", "amount": null, "type": "create_customer", "note": ""}]
+  },
+  {
+    "transcript": "Meena ke naam se khata kholiye",
+    "expected": [{"person": "Meena", "amount": null, "type": "create_customer", "note": ""}]
+  },
+  {
     "transcript": "Ramesh ko paanch sau udhaar diya",
     "expected": [{"person": "Ramesh", "amount": 500, "type": "credit_given", "note": "udhaar diya"}]
   },

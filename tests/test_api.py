@@ -49,7 +49,13 @@ class LedgerAPITests(unittest.TestCase):
         self.assertEqual(result["status"], "confirmation_required")
         self.assertEqual(result["entries"][0]["person"], "Ramesh")
         self.assertEqual(base64.b64decode(result["audio_base64"]), b"spoken audio")
-        self.assertEqual(self.client.get("/ledger").json(), {"customers": []})
+        self.assertEqual(
+            self.client.get("/ledger").json(),
+            {
+                "customers": [],
+                "summary": {"credit": 0, "paid": 0, "transaction_count": 0},
+            },
+        )
 
         confirmed = self.client.post(
             "/confirm",
@@ -92,7 +98,7 @@ class LedgerAPITests(unittest.TestCase):
         self.assertEqual(customer["balance"], 450)
         self.assertEqual(customer["transactions"][0]["note"], "corrected amount")
 
-    def test_clarification_is_spoken_and_not_staged(self):
+    def test_unrecognized_intent_is_spoken_and_not_staged(self):
         from backend.parser import ParserClarification
 
         self.parse.side_effect = ParserClarification("How much did Ramesh pay?")
@@ -102,13 +108,53 @@ class LedgerAPITests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], "clarification_required")
+        self.assertEqual(response.json()["status"], "unrecognized")
         self.assertEqual(
-            response.json()["clarification_question"],
-            "How much did Ramesh pay?",
+            response.json()["message"],
+            "Samajh nahi aaya, phir se bolo. Try speaking again.",
         )
-        self.speak.assert_called_once_with("How much did Ramesh pay?", "hi-en")
-        self.assertEqual(self.client.get("/ledger").json(), {"customers": []})
+        self.speak.assert_called_once_with("Samajh nahi aaya, phir se bolo", "hi-en")
+        self.assertEqual(
+            self.client.get("/ledger").json()["summary"]["transaction_count"],
+            0,
+        )
+
+    def test_create_customer_intent_creates_zero_balance_and_speaks(self):
+        from backend.parser import parse_fallback
+
+        self.transcribe.return_value = "Ramesh ke naam se khata banao"
+        self.parse.side_effect = parse_fallback
+        response = self.client.post(
+            "/voice",
+            files={"audio": ("recording.wav", b"audio bytes", "audio/wav")},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertEqual(result["status"], "customer_created")
+        self.assertEqual(result["confirmation_text"], "Ramesh ka khata ban gaya")
+        self.speak.assert_called_once_with("Ramesh ka khata ban gaya", "hi-en")
+        self.assertEqual(self.client.get("/customer/Ramesh").json()["balance"], 0)
+        self.assertEqual(self.client.get("/ledger").json()["customers"][0]["balance"], 0)
+
+    def test_voice_example_endpoint_uses_timbre(self):
+        response = self.client.get("/voice-example?speech_language=hi-en")
+
+        self.assertEqual(response.status_code, 200)
+        self.speak.assert_called_once_with("Ramesh ko 500 udhaar diya", "hi-en")
+        self.assertEqual(base64.b64decode(response.json()["audio_base64"]), b"spoken audio")
+
+    def test_empty_transcript_is_reported_and_spoken(self):
+        self.transcribe.return_value = ""
+        response = self.client.post(
+            "/voice",
+            files={"audio": ("recording.wav", b"audio bytes", "audio/wav")},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "unrecognized")
+        self.speak.assert_called_once_with("Samajh nahi aaya, phir se bolo", "hi-en")
+        self.parse.assert_not_called()
 
     def test_declining_confirmation_does_not_save(self):
         staged = self.client.post(
@@ -121,7 +167,10 @@ class LedgerAPITests(unittest.TestCase):
         )
 
         self.assertEqual(response.json()["status"], "cancelled")
-        self.assertEqual(self.client.get("/ledger").json(), {"customers": []})
+        self.assertEqual(
+            self.client.get("/ledger").json()["summary"]["transaction_count"],
+            0,
+        )
 
     def test_customer_detail_and_reminder_report_balance(self):
         staged = self.client.post(
@@ -166,6 +215,10 @@ class LedgerAPITests(unittest.TestCase):
 
         ledger = self.client.get("/ledger").json()
         self.assertEqual(ledger["customers"][0]["balance"], 300)
+        self.assertEqual(
+            ledger["summary"],
+            {"credit": 500, "paid": 200, "transaction_count": 2},
+        )
 
     def test_oversized_audio_is_rejected(self):
         from backend.main import MAX_AUDIO_BYTES
@@ -186,6 +239,12 @@ class LedgerAPITests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn("Awaaz Khata", page.text)
         self.assertIn('id="splash-screen"', page.text)
+        self.assertEqual(page.text.count('class="transcript-panel glass-card"'), 1)
+        self.assertIn('class="summary-card glass-card" hidden', page.text)
+        self.assertIn('id="summary-stats" hidden', page.text)
+        self.assertIn("transliterateDevanagari", script.text)
+        self.assertIn("data-play-example", script.text)
+        self.assertIn("@media (max-width: 560px)", stylesheet.text)
         self.assertEqual(script.status_code, 200)
         self.assertIn("MediaRecorder", script.text)
         self.assertIn('classList.add("is-dismissed")', script.text)

@@ -30,16 +30,27 @@ def _matches_case(parse, case):
         expected = case["expected"]
         stable_fields = ("person", "amount", "type")
         comparable = [
-            {field: transaction[field] for field in stable_fields}
-            for transaction in actual
+            {
+                field: transaction.get(field)
+                for field in stable_fields
+                if field in expected_transaction
+            }
+            for transaction, expected_transaction in zip(actual, expected)
         ]
         normalized_expected = [
-            {field: transaction[field] for field in stable_fields}
+            {
+                field: transaction[field]
+                for field in stable_fields
+                if field in transaction
+            }
             for transaction in expected
         ]
         if comparable != normalized_expected:
             raise AssertionError(f"expected {normalized_expected!r}, got {comparable!r}")
-        if any(not transaction["note"].strip() for transaction in actual):
+        if any(
+            transaction["type"] != "create_customer" and not transaction["note"].strip()
+            for transaction in actual
+        ):
             raise AssertionError("each transaction must include a non-empty note")
         return True, ""
     except ParserClarification as exc:
@@ -116,6 +127,18 @@ class FallbackParserTests(unittest.TestCase):
             set(parsed[0]),
             {"person", "amount", "type", "note"},
         )
+
+    def test_create_customer_intent_cases(self):
+        cases = [
+            case
+            for case in self.cases
+            if case.get("expected", [{}])[0].get("type") == "create_customer"
+        ]
+        self.assertEqual(len(cases), 5)
+        for case in cases:
+            with self.subTest(transcript=case["transcript"]):
+                success, detail = _matches_case(parse_fallback, case)
+                self.assertTrue(success, detail)
 
     def test_gemini_provider_requests_json_and_validates_response(self):
         provider = GeminiProvider("test-key", "test-model", 5)

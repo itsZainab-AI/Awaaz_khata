@@ -8,13 +8,15 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.database import (
     cancel_confirmation,
     confirm_transactions,
+    create_customer,
     get_customer,
     get_ledger,
+    get_ledger_summary,
     initialize_database,
     stage_confirmation,
 )
@@ -41,6 +43,12 @@ class ConfirmationRequest(BaseModel):
     confirmation_id: str = Field(min_length=1)
     confirmed: bool
     entries: list[Transaction] | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def reject_non_transaction_intents(self):
+        if self.entries and any(entry.type == "create_customer" for entry in self.entries):
+            raise ValueError("Customer creation cannot be saved as a transaction.")
+        return self
 
 
 def _audio_response(audio: bytes) -> dict[str, str]:
@@ -104,18 +112,38 @@ def create_app(database_path: Path | str = DEFAULT_DATABASE_PATH) -> FastAPI:
         except GnaniAPIError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+        if not transcript.strip():
+            return {
+                "status": "unrecognized",
+                "transcript": transcript,
+                "message": "Samajh nahi aaya, phir se bolo. Try speaking again.",
+                **_speak_or_raise("Samajh nahi aaya, phir se bolo", speech_language),
+            }
+
         try:
             transactions = parse_transactions(transcript)
-        except ParserClarification as exc:
-            speech = _speak_or_raise(exc.question, speech_language)
+        except ParserClarification:
             return {
-                "status": "clarification_required",
+                "status": "unrecognized",
                 "transcript": transcript,
-                "clarification_question": exc.question,
-                **speech,
+                "message": "Samajh nahi aaya, phir se bolo. Try speaking again.",
+                **_speak_or_raise("Samajh nahi aaya, phir se bolo", speech_language),
             }
         except ParserError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        if len(transactions) == 1 and transactions[0]["type"] == "create_customer":
+            customer_name = transactions[0]["person"]
+            confirmation_text = f"{customer_name} ka khata ban gaya"
+            speech = _speak_or_raise(confirmation_text, speech_language)
+            customer = create_customer(resolved_database_path, customer_name)
+            return {
+                "status": "customer_created",
+                "transcript": transcript,
+                "customer": customer,
+                "confirmation_text": confirmation_text,
+                **speech,
+            }
 
         confirmation_id = str(uuid.uuid4())
         confirmation_text = _confirmation_text(transactions)
@@ -171,7 +199,14 @@ def create_app(database_path: Path | str = DEFAULT_DATABASE_PATH) -> FastAPI:
 
     @application.get("/ledger")
     def ledger() -> dict:
-        return {"customers": get_ledger(resolved_database_path)}
+        return {
+            "customers": get_ledger(resolved_database_path),
+            "summary": get_ledger_summary(resolved_database_path),
+        }
+
+    @application.get("/voice-example")
+    def voice_example(speech_language: str = "hi-en") -> dict:
+        return _speak_or_raise("Ramesh ko 500 udhaar diya", speech_language)
 
     @application.get("/customer/{name}")
     def customer(name: str) -> dict:

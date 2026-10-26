@@ -34,9 +34,9 @@ class Transaction(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     person: str = Field(min_length=1)
-    amount: float = Field(gt=0, allow_inf_nan=False)
-    type: Literal["credit_given", "payment_received"]
-    note: str
+    amount: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    type: Literal["credit_given", "payment_received", "create_customer"]
+    note: str = ""
 
     @model_validator(mode="after")
     def normalize_fields(self):
@@ -44,6 +44,12 @@ class Transaction(BaseModel):
         self.note = self.note.strip()
         if not self.person:
             raise ValueError("person must contain a name")
+        if self.type == "create_customer" and self.amount is not None:
+            raise ValueError("customer creation must not include an amount")
+        if self.type != "create_customer" and self.amount is None:
+            raise ValueError("transactions must include an amount")
+        if self.type != "create_customer" and not self.note:
+            raise ValueError("transactions must include a note")
         return self
 
 
@@ -58,6 +64,15 @@ class ParseResult(BaseModel):
         has_question = bool(self.clarification_question and self.clarification_question.strip())
         if has_question == bool(self.transactions):
             raise ValueError("Return transactions or a clarification question, not both")
+        customer_intents = [
+            transaction
+            for transaction in self.transactions
+            if transaction.type == "create_customer"
+        ]
+        if customer_intents and (
+            len(self.transactions) != 1 or len(customer_intents) != 1
+        ):
+            raise ValueError("Customer creation must be the only parser intent")
         return self
 
 
@@ -106,10 +121,13 @@ class GeminiProvider(ParserProvider):
             "credit_given means the shopkeeper gave goods or money on credit "
             "and the named person owes the shopkeeper. payment_received means "
             "the person paid or returned money to the shopkeeper. Convert spoken "
+            "requests to create a customer khata, such as 'Ramesh ke naam se "
+            "khata banao', to type create_customer with person, null amount, "
+            "and an empty note. This is not a financial transaction. "
             "amounts to numeric rupees (paanch sau=500, dedh hazaar=1500, "
             "sava hazaar=1250, ek lakh=100000, ek crore=10000000). Remove "
-            "honorifics such as ji/jee from names. Give each transaction a short "
-            "contextual note. Never infer a missing person, amount, or direction. "
+            "honorifics such as ji/jee from names. Give each financial transaction "
+            "a short contextual note. Never infer a missing person, amount, or direction. "
             "If required details are unclear or there is no completed transaction, "
             "return no transactions and ask one short clarification question in "
             "the speaker's language."
@@ -313,6 +331,14 @@ _DEVANAGARI_WORDS = {
     "को": "ko",
     "ने": "ne",
     "से": "se",
+    "के": "ke",
+    "नाम": "naam",
+    "खाता": "khata",
+    "बनाओ": "banao",
+    "बना": "bana",
+    "खोलिए": "kholiye",
+    "खोल": "khol",
+    "दो": "do",
     "पाँच": "paanch",
     "पाच": "paanch",
     "पाँचशे": "panchshe",
@@ -454,6 +480,25 @@ def _extract_person(clause: str) -> str | None:
 
 def _rule_parse(transcript: str) -> ParseResult:
     normalized = _normalize_rule_text(transcript)
+    customer_match = re.search(
+        r"(.+?)\s+ke\s+naam\s+se\s+khata\s+(?:banao|bana\s+do|khol\s+do|kholiye)\b",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if customer_match:
+        person = _normalize_person(customer_match.group(1))
+        if person:
+            return ParseResult(
+                transactions=[
+                    Transaction(
+                        person=person,
+                        amount=None,
+                        type="create_customer",
+                    )
+                ],
+                clarification_question=None,
+            )
+
     clauses = re.split(r"\s+(?:aur|ani|and|then)\s+|[,;।]+", normalized, flags=re.IGNORECASE)
     transactions: list[Transaction] = []
     previous_person = None
