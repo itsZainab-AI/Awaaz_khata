@@ -3,5 +3,6 @@
 __pycache__/
 *.py[cod]
 ledger.sqlite3
+.cache/
 samples/gnani_response.mp3
 samples/gnani_response.wav

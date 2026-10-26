@@ -11,13 +11,13 @@ Use `python -m tests.test_gnani --language mr-IN` for Marathi, or set `GNANI_TTS
 
 ## Transaction parser
 
-Install [Ollama](https://ollama.com), then download the default small model with `ollama pull qwen2.5:3b` and start Ollama. Configure `OLLAMA_HOST`, `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` in `.env` if needed. The parser forces a JSON schema response and validates it with Pydantic; unclear transcripts raise `ParserClarification` instead of producing ledger entries.
+Set `GEMINI_API_KEY` in `.env`; the default model is `gemini-2.5-flash`. Override it with `PARSER_MODEL` without changing code, and optionally set `PARSER_TIMEOUT_SECONDS` and `PARSER_CACHE_PATH`. The parser uses Google's official `google-genai` SDK in JSON response mode and validates responses with Pydantic. If Gemini fails twice, a local rule parser handles common transactions and marks its list result `low_confidence`; unclear transcripts raise `ParserClarification` rather than producing ledger entries. Results are cached in SQLite by transcript SHA-256 under `.cache/` by default.
 
-Run the 20-sentence evaluation with `python -m tests.test_parser`. It prints each case and the overall pass rate. The first run may take longer while the model loads.
+Run `python -m tests.test_parser` to report pass rates for the Gemini and fallback paths. Use `python -m tests.test_parser --path fallback` to evaluate the local rules without API calls, or `--path llm` for Gemini only. The 20 transcript cases are in `tests/parser_cases.json`.
 
 ## FastAPI ledger backend
 
-Install dependencies with `python -m pip install -r requirements.txt`, ensure Ollama is running with the configured model, and set `GNANI_API_KEY_ID` in `.env`. Start the API with `uvicorn backend.main:app --reload`; interactive endpoint docs are available at `http://127.0.0.1:8000/docs`. SQLite data is stored in `ledger.sqlite3` by default; set `LEDGER_DATABASE_PATH` to choose another location.
+Install dependencies with `python -m pip install -r requirements.txt`, set `GEMINI_API_KEY` and `GNANI_API_KEY_ID` in `.env`, and start the API with `uvicorn backend.main:app --reload`; interactive endpoint docs are available at `http://127.0.0.1:8000/docs`. SQLite ledger data is stored in `ledger.sqlite3` by default; set `LEDGER_DATABASE_PATH` to choose another location.
 
 `POST /voice` accepts multipart form data with an `audio` file, optional `language` (default `hi-IN`), and optional `speech_language` (default `hi-en`). It returns parsed `entries` and spoken confirmation audio as base64 with a `confirmation_id`, without saving any ledger entries. Submit that ID to `POST /confirm` as JSON with `confirmed: true` to save the entries, or `confirmed: false` to discard them. Unclear audio returns a spoken `clarification_question` and does not stage or save entries. Audio uploads are limited to 25 MB.
 

@@ -27,10 +27,10 @@
     "expected": [{"person": "Sunita", "amount": 1000, "type": "payment_received", "note": "udhaar parat kela"}]
   },
   {
-    "transcript": "Amit ko saat sau udhaar diya aur Rohit ne do sau wapas kiye",
+    "transcript": "Amit ko saat sau udhaar diya aur Rohit ne do sau diye",
     "expected": [
       {"person": "Amit", "amount": 700, "type": "credit_given", "note": "udhaar diya"},
-      {"person": "Rohit", "amount": 200, "type": "payment_received", "note": "wapas kiye"}
+      {"person": "Rohit", "amount": 200, "type": "payment_received", "note": "diye"}
     ]
   },
   {
