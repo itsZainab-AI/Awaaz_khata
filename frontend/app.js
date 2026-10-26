@@ -1,554 +1,646 @@
-const elements = {
-  addEntry: document.querySelector("#add-entry"),
-  clarification: document.querySelector("#clarification-block"),
-  clarificationQuestion: document.querySelector("#clarification-question"),
-  confirm: document.querySelector("#confirm-button"),
-  discard: document.querySelector("#discard-button"),
-  entries: document.querySelector("#entries-block"),
-  entryList: document.querySelector("#entry-list"),
-  language: document.querySelector("#language"),
-  ledger: document.querySelector("#ledger-list"),
-  mic: document.querySelector("#mic-button"),
-  micHint: document.querySelector("#mic-hint"),
-  notice: document.querySelector("#notice"),
-  recordingStatus: document.querySelector("#recording-status"),
-  refresh: document.querySelector("#refresh-ledger"),
-  replyAudio: document.querySelector("#reply-audio"),
-  transcript: document.querySelector("#transcript"),
-  transcriptBlock: document.querySelector("#transcript-block"),
-  splash: document.querySelector("#splash-screen"),
+import { initMicVisualizer } from './mic-visualizer.js';
+import { createEntryCard } from './entries.js';
+import { createLedgerRow, createTimelineEntry } from './ledger.js';
+import { emitParticles, vibrate, showNotice } from './effects.js';
+
+const ui = {
+  splash: document.querySelector('#splash-screen'),
+  micButton: document.querySelector('#mic-button'),
+  micStatus: document.querySelector('#mic-status'),
+  transcriptText: document.querySelector('#transcript-text'),
+  notice: document.querySelector('#notice'),
+  audio: document.querySelector('#reply-audio'),
+  confirmButton: document.querySelector('#confirm-button'),
+  discardButton: document.querySelector('#discard-button'),
+  ledgerList: document.querySelector('#ledger-list'),
+  confirmationStack: document.querySelector('#confirmation-stack'),
+  entryCardList: document.querySelector('#entry-card-list'),
+  refreshLedger: document.querySelector('#refresh-ledger'),
+  languageButtons: [...document.querySelectorAll('#language-toggle button')],
+  customerDrawer: document.querySelector('#customer-drawer'),
+  drawerAvatar: document.querySelector('#drawer-avatar'),
+  drawerName: document.querySelector('#drawer-name'),
+  drawerBalance: document.querySelector('#drawer-balance'),
+  drawerCount: document.querySelector('#drawer-count'),
+  drawerTimeline: document.querySelector('#drawer-timeline'),
+  closeDrawer: document.querySelector('#close-drawer'),
+  sendReminder: document.querySelector('#send-reminder'),
+  reminderChat: document.querySelector('#reminder-chat'),
+  reminderMessage: document.querySelector('#reminder-message'),
+  pointerGlow: document.querySelector('#pointer-glow'),
 };
 
 const state = {
   confirmationId: null,
   entries: [],
+  currentUserName: null,
+  stream: null,
   mediaRecorder: null,
   chunks: [],
-  stream: null,
-  recording: false,
-  starting: false,
-  busy: false,
+  isRecording: false,
+  isBusy: false,
   pointerId: null,
-  recordingTimer: null,
-  replyAudioUrl: null,
+  isProcessing: false,
+  voiceLanguage: 'hi-en',
+  speechLanguage: 'hi-en',
+  loadedLedger: [],
+  statusTimer: 0,
 };
 
-const money = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 2,
-});
+const micVisualizer = initMicVisualizer(document.querySelector('#mic-canvas'));
 
-window.setTimeout(() => {
-  elements.splash.classList.add("is-dismissed");
-  window.setTimeout(() => {
-    elements.splash.hidden = true;
-  }, 420);
-}, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 250 : 1100);
+const setLanguage = (value) => {
+  const map = {
+    'hi-en': { language: 'hi-IN', speechLanguage: 'hi-en' },
+    'hi-IN': { language: 'hi-IN', speechLanguage: 'hi-IN' },
+    'mr-IN': { language: 'mr-IN', speechLanguage: 'mr-IN' },
+  };
+  const resolved = map[value] || map['hi-en'];
+  state.voiceLanguage = resolved.language;
+  state.speechLanguage = resolved.speechLanguage;
+  ui.languageButtons.forEach((button) => {
+    const active = button.dataset.lang === value;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+};
 
-function showNotice(message, kind = "") {
-  elements.notice.textContent = message;
-  elements.notice.className = `notice ${kind}`.trim();
-  elements.notice.hidden = false;
-}
+const setMicStatus = (message) => {
+  ui.micStatus.textContent = message;
+};
 
-function clearNotice() {
-  elements.notice.hidden = true;
-  elements.notice.textContent = "";
-  elements.notice.className = "notice";
-}
+const preferredMimeType = () => {
+  if (!window.MediaRecorder) return '';
+  const candidates = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || '';
+};
 
-function setBusy(busy) {
-  state.busy = busy;
-  elements.mic.disabled = busy;
-  elements.confirm.disabled = busy;
-  elements.discard.disabled = busy;
-}
+const stopMicrophone = () => {
+  if (state.stream) {
+    state.stream.getTracks().forEach((track) => track.stop());
+    state.stream = null;
+  }
+  micVisualizer.detachStream();
+};
 
-function selectedLanguage() {
-  const option = elements.language.selectedOptions[0];
-  return { language: option.value, speechLanguage: option.dataset.speech };
-}
-
-function resetProposal() {
+const resetDraft = () => {
   state.confirmationId = null;
   state.entries = [];
-  elements.transcriptBlock.hidden = true;
-  elements.clarification.hidden = true;
-  elements.entries.hidden = true;
-  elements.entryList.replaceChildren();
-  elements.replyAudio.hidden = true;
-  elements.replyAudio.pause();
-  elements.replyAudio.removeAttribute("src");
-  if (state.replyAudioUrl) URL.revokeObjectURL(state.replyAudioUrl);
-  state.replyAudioUrl = null;
+  ui.confirmationStack.hidden = true;
+  ui.entryCardList.replaceChildren();
+  ui.audio.pause();
+  ui.audio.hidden = true;
+  ui.audio.removeAttribute('src');
+  ui.audio.load();
+  ui.reminderChat.hidden = true;
+  ui.customerDrawer.classList.remove('is-open');
+};
+
+const setBusy = (busy) => {
+  state.isBusy = busy;
+  ui.micButton.disabled = busy;
+  ui.confirmButton.disabled = busy;
+  ui.discardButton.disabled = busy;
+};
+
+function showTransientNotice(message, type = '') {
+  showNotice(ui.notice, message, type);
 }
 
-async function playReply(encodedAudio, contentType) {
-  if (!encodedAudio) return;
-  const binary = atob(encodedAudio);
+const handleAudioReply = async (audioBase64, contentType = 'audio/mpeg') => {
+  if (!audioBase64) return;
+  const binary = atob(audioBase64);
   const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
+  for (let idx = 0; idx < binary.length; idx += 1) {
+    bytes[idx] = binary.charCodeAt(idx);
   }
-  state.replyAudioUrl = URL.createObjectURL(new Blob([bytes], { type: contentType }));
-  elements.replyAudio.src = state.replyAudioUrl;
-  elements.replyAudio.hidden = false;
+  const blob = new Blob([bytes], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  ui.audio.src = url;
+  ui.audio.hidden = false;
+  ui.audio.controls = true;
+  micVisualizer.bindAudio(ui.audio);
+  micVisualizer.setPlayback();
   try {
-    await elements.replyAudio.play();
+    await ui.audio.play();
   } catch {
-    showNotice("Your reply is ready below. Tap play to listen.", "");
+    showTransientNotice('Reply ready — tap play to hear it.', '');
   }
-}
+};
 
-function writeUint32(view, offset, value) {
-  view.setUint32(offset, value, true);
-}
+const setMicButtonMode = (mode) => {
+  ui.micButton.classList.toggle('is-recording', mode === 'recording');
+  ui.micButton.classList.toggle('is-processing', mode === 'processing');
+  ui.micButton.setAttribute('aria-label', mode === 'recording'
+    ? 'Recording, release to finish'
+    : 'Hold to record');
+  ui.micButton.setAttribute('aria-pressed', String(mode === 'recording'));
+};
 
-function audioBufferToWav(audioBuffer) {
-  const sampleRate = 16000;
-  const ratio = audioBuffer.sampleRate / sampleRate;
-  const outputLength = Math.ceil(audioBuffer.length / ratio);
-  const mono = new Float32Array(outputLength);
-  const channels = Array.from(
-    { length: audioBuffer.numberOfChannels },
-    (_, index) => audioBuffer.getChannelData(index),
-  );
-
-  for (let outputIndex = 0; outputIndex < outputLength; outputIndex += 1) {
-    const start = Math.floor(outputIndex * ratio);
-    const end = Math.min(Math.floor((outputIndex + 1) * ratio), audioBuffer.length);
-    let total = 0;
-    let count = 0;
-    for (let sourceIndex = start; sourceIndex < end; sourceIndex += 1) {
-      for (const channel of channels) {
-        total += channel[sourceIndex];
-        count += 1;
-      }
-    }
-    mono[outputIndex] = count ? total / count : 0;
-  }
-
-  const wav = new ArrayBuffer(44 + mono.length * 2);
-  const view = new DataView(wav);
-  const bytes = new Uint8Array(wav);
-  bytes.set(new TextEncoder().encode("RIFF"), 0);
-  writeUint32(view, 4, 36 + mono.length * 2);
-  bytes.set(new TextEncoder().encode("WAVEfmt "), 8);
-  writeUint32(view, 16, 16);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  writeUint32(view, 24, sampleRate);
-  writeUint32(view, 28, sampleRate * 2);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  bytes.set(new TextEncoder().encode("data"), 36);
-  writeUint32(view, 40, mono.length * 2);
-
-  for (let index = 0; index < mono.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, mono[index]));
-    view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-  }
-  return new Blob([wav], { type: "audio/wav" });
-}
-
-async function toWav(recording) {
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) {
-    throw new Error("This browser can record audio but cannot prepare it for transcription.");
-  }
-  const context = new AudioContextClass();
-  try {
-    const decoded = await context.decodeAudioData(await recording.arrayBuffer());
-    return audioBufferToWav(decoded);
-  } finally {
-    await context.close();
-  }
-}
-
-function preferredRecorderType() {
-  if (!window.MediaRecorder) return "";
-  return [
-    "audio/webm;codecs=opus",
-    "audio/mp4",
-    "audio/ogg;codecs=opus",
-  ].find((type) => MediaRecorder.isTypeSupported(type)) || "";
-}
-
-async function startRecording(pointerId = null) {
-  if (state.recording || state.starting || state.busy) return;
+const startRecording = async () => {
+  if (state.isBusy || state.isRecording || state.isProcessing) return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    showNotice("Audio recording is not supported in this browser. Try a recent version of Safari or Chrome.", "error");
+    showTransientNotice('This browser cannot access the mic. Please try another device or browser.', 'error');
     return;
   }
 
-  clearNotice();
-  resetProposal();
-  state.pointerId = pointerId;
-  state.starting = true;
+  resetDraft();
+  setMicButtonMode('recording');
+  setMicStatus('Listening… release to finish');
+  state.isRecording = true;
+  vibrate(18);
+  emitParticles(ui.micButton, 'rgba(255, 153, 51, 0.85)', 22);
+
   try {
-    state.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    if (!state.starting) {
-      stopMicrophone();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (!state.isRecording) {
+      stream.getTracks().forEach((track) => track.stop());
+      setMicButtonMode('idle');
+      setMicStatus('Press & hold to record');
       return;
     }
-    const mimeType = preferredRecorderType();
-    state.mediaRecorder = new MediaRecorder(
-      state.stream,
-      mimeType ? { mimeType } : undefined,
-    );
+    state.stream = stream;
+    micVisualizer.attachStream(stream);
+
+    const mimeType = preferredMimeType();
+    state.mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     state.chunks = [];
-    state.mediaRecorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size) state.chunks.push(event.data);
+
+    state.mediaRecorder.addEventListener('dataavailable', (event) => {
+      if (event.data && event.data.size > 0) state.chunks.push(event.data);
     });
-    state.mediaRecorder.addEventListener("stop", submitRecording, { once: true });
-    state.mediaRecorder.start();
-    state.starting = false;
-    state.recording = true;
-    elements.mic.classList.add("is-recording");
-    elements.mic.setAttribute("aria-label", "Recording, release to finish");
-    elements.recordingStatus.textContent = "Listening… let go to finish";
-    elements.micHint.innerHTML = "I’m listening…<br><span>Let go when you’re done</span>";
-    elements.voiceCard?.classList.add("is-recording");
-    state.recordingTimer = window.setTimeout(() => {
-      if (state.recording && state.mediaRecorder?.state === "recording") stopRecording();
-    }, 60_000);
-  } catch (error) {
-    state.starting = false;
-    stopMicrophone();
-    showNotice(error.name === "NotAllowedError"
-      ? "Please allow microphone access, then press and hold to try again."
-      : `Couldn’t start recording: ${error.message}`, "error");
-  }
-}
 
-function stopMicrophone() {
-  state.stream?.getTracks().forEach((track) => track.stop());
-  state.stream = null;
-}
+    state.mediaRecorder.addEventListener('stop', async () => {
+      try {
+        if (!state.chunks.length) {
+          showTransientNotice('No sound was captured. Please try again.', 'error');
+          setMicButtonMode('idle');
+          setMicStatus('Press & hold to record');
+          return;
+        }
 
-function stopRecording() {
-  if (!state.recording) {
-    state.starting = false;
-    state.pointerId = null;
-    return;
-  }
-  state.recording = false;
-  state.pointerId = null;
-  window.clearTimeout(state.recordingTimer);
-  elements.mic.classList.remove("is-recording");
-  elements.mic.setAttribute("aria-label", "Hold to record");
-  elements.recordingStatus.textContent = "Getting your words ready…";
-  elements.micHint.innerHTML = "One moment…<br><span>Getting your words ready</span>";
-  elements.voiceCard?.classList.remove("is-recording");
-  if (state.mediaRecorder?.state === "recording") state.mediaRecorder.stop();
-  stopMicrophone();
-}
-
-async function submitRecording() {
-  if (!state.chunks.length) {
-    elements.recordingStatus.textContent = "Ready when you are";
-    elements.micHint.innerHTML = "Press and hold to talk<br><span>Let go when you’re finished</span>";
-    showNotice("I didn’t catch any audio. Please try again.", "error");
-    return;
-  }
-
-  setBusy(true);
-  try {
-    const recordedBlob = new Blob(state.chunks, {
-      type: state.mediaRecorder?.mimeType || "audio/webm",
-    });
-    const wav = await toWav(recordedBlob);
-    const form = new FormData();
-    const { language, speechLanguage } = selectedLanguage();
-    form.append("audio", wav, "voice-note.wav");
-    form.append("language", language);
-    form.append("speech_language", speechLanguage);
-
-    const response = await fetch("/voice", { method: "POST", body: form });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "The voice request could not be completed.");
-
-    elements.transcript.textContent = result.transcript || "";
-    elements.transcriptBlock.hidden = !result.transcript;
-    if (result.status === "clarification_required") {
-      elements.clarificationQuestion.textContent = result.clarification_question;
-      elements.clarification.hidden = false;
-      showNotice("Let’s make sure we get it right before adding anything.", "");
-    } else if (result.status === "confirmation_required") {
-      state.confirmationId = result.confirmation_id;
-      state.entries = result.entries;
-      renderEntries();
-      elements.entries.hidden = false;
-      showNotice("Nothing is saved until you confirm.", "");
-    } else {
-      throw new Error("The server returned an unexpected voice response.");
-    }
-    await playReply(result.audio_base64, result.audio_content_type);
-  } catch (error) {
-    showNotice(error.message || "Something went wrong while processing the recording.", "error");
-  } finally {
-    setBusy(false);
-    elements.recordingStatus.textContent = "Ready when you are";
-    elements.micHint.innerHTML = "Press and hold to talk<br><span>Let go when you’re finished</span>";
-  }
-}
-
-function createField(label, value, className, type = "text") {
-  const wrapper = document.createElement("label");
-  wrapper.className = `field-label ${className}`;
-  const caption = document.createElement("span");
-  caption.textContent = label;
-  const input = type === "select"
-    ? document.createElement("select")
-    : document.createElement("input");
-
-  if (type === "select") {
-    for (const [value, text] of [
-      ["credit_given", "Gave on credit"],
-      ["payment_received", "Payment received"],
-    ]) {
-      const option = document.createElement("option");
-      option.value = value;
-      option.textContent = text;
-      input.append(option);
-    }
-    input.value = value;
-  } else {
-    input.type = type;
-    input.value = value ?? "";
-    input.required = true;
-    if (type === "number") {
-      input.min = "0.01";
-      input.step = "0.01";
-      input.inputMode = "decimal";
-    }
-    if (type === "text") input.maxLength = 120;
-  }
-  input.setAttribute("aria-label", label);
-  wrapper.append(caption, input);
-  return { wrapper, input };
-}
-
-function renderEntries() {
-  for (const entry of state.entries) {
-    if (!entry._inputs) continue;
-    entry.person = entry._inputs.person.value;
-    entry.amount = entry._inputs.amount.value;
-    entry.note = entry._inputs.note.value;
-    entry.type = entry._inputs.type.value;
-  }
-  elements.entryList.replaceChildren();
-  state.entries.forEach((entry, index) => {
-    const card = document.createElement("div");
-    card.className = "entry-card";
-    const person = createField("Person", entry.person, "field-person");
-    const amount = createField("Amount (₹)", entry.amount, "field-amount", "number");
-    const note = createField("Note", entry.note, "field-note");
-    const type = createField("Entry", entry.type, "field-type", "select");
-    const edit = document.createElement("button");
-    edit.className = "entry-edit";
-    edit.type = "button";
-    edit.textContent = entry.editing ? "Done" : "Edit";
-    edit.setAttribute("aria-label", `${entry.editing ? "Finish editing" : "Edit"} ${entry.person || "entry"}`);
-    for (const field of [person.input, amount.input, note.input, type.input]) {
-      field.disabled = !entry.editing;
-    }
-    edit.addEventListener("click", () => {
-      entry.editing = !entry.editing;
-      renderEntries();
-      if (entry.editing) elements.entryList.children[index]?.querySelector(".field-person input")?.focus();
-    });
-    const remove = document.createElement("button");
-    remove.className = "entry-remove";
-    remove.type = "button";
-    remove.textContent = "×";
-    remove.setAttribute("aria-label", `Remove ${entry.person || "entry"}`);
-    remove.addEventListener("click", () => {
-      for (const current of state.entries) {
-        if (!current._inputs) continue;
-        current.person = current._inputs.person.value;
-        current.amount = current._inputs.amount.value;
-        current.note = current._inputs.note.value;
-        current.type = current._inputs.type.value;
+        const blob = new Blob(state.chunks, { type: state.mediaRecorder?.mimeType || 'audio/webm' });
+        setMicStatus('Preparing your voice note…');
+        const wav = await toWav(blob);
+        await submitVoice(wav);
+      } catch (error) {
+        state.isProcessing = false;
+        setBusy(false);
+        setMicButtonMode('idle');
+        setMicStatus('Press & hold to record');
+        showTransientNotice(error.message || 'The recording could not be prepared.', 'error');
       }
-      state.entries.splice(index, 1);
-      if (!state.entries.length) {
-        discardProposal();
-        showNotice("No entries to save. You can record again whenever you’re ready.", "");
-      } else {
+    }, { once: true });
+
+    state.mediaRecorder.start();
+  } catch (error) {
+    state.isRecording = false;
+    setMicButtonMode('idle');
+    setMicStatus('Press & hold to record');
+    stopMicrophone();
+    showTransientNotice(error.name === 'NotAllowedError'
+      ? 'Microphone access was denied. Please allow it and try again.'
+      : `Could not start the mic: ${error.message}`, 'error');
+  }
+};
+
+const stopRecording = () => {
+  if (!state.isRecording) return;
+  state.isRecording = false;
+  setMicButtonMode('processing');
+  setMicStatus('Processing your words…');
+  if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+    state.mediaRecorder.stop();
+  }
+  stopMicrophone();
+};
+
+const toWav = async (blob) => {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    throw new Error('This browser cannot convert recordings to the required WAV format.');
+  }
+
+  const audioContext = new AudioContextClass();
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    const sampleRate = 16000;
+    const ratio = decoded.sampleRate / sampleRate;
+    const outputLength = Math.ceil(decoded.length / ratio);
+    const mono = new Float32Array(outputLength);
+    const channels = Array.from({ length: decoded.numberOfChannels }, (_, index) => decoded.getChannelData(index));
+
+    for (let outputIndex = 0; outputIndex < outputLength; outputIndex += 1) {
+      const start = Math.floor(outputIndex * ratio);
+      const end = Math.min(Math.floor((outputIndex + 1) * ratio), decoded.length);
+      let total = 0;
+      let count = 0;
+      for (let sourceIndex = start; sourceIndex < end; sourceIndex += 1) {
+        for (const channel of channels) {
+          total += channel[sourceIndex];
+          count += 1;
+        }
+      }
+      mono[outputIndex] = count ? total / count : 0;
+    }
+
+    const wavLength = 44 + mono.length * 2;
+    const wav = new ArrayBuffer(wavLength);
+    const view = new DataView(wav);
+    const bytes = new Uint8Array(wav);
+
+    const writeString = (offset, text) => {
+      for (let idx = 0; idx < text.length; idx += 1) {
+        bytes[offset + idx] = text.charCodeAt(idx);
+      }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + mono.length * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, mono.length * 2, true);
+
+    for (let index = 0; index < mono.length; index += 1) {
+      const sample = Math.max(-1, Math.min(1, mono[index]));
+      view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    }
+    return new Blob([wav], { type: 'audio/wav' });
+  } finally {
+    await audioContext.close();
+  }
+};
+
+const submitVoice = async (waveBlob) => {
+  state.isProcessing = true;
+  setBusy(true);
+  setMicButtonMode('processing');
+  const processingStatuses = ['Sun raha hoon…', 'Samajh raha hoon…', 'Hisaab likh raha hoon…'];
+  let statusIndex = 0;
+  setMicStatus(processingStatuses[statusIndex]);
+  window.clearInterval(state.statusTimer);
+  state.statusTimer = window.setInterval(() => {
+    statusIndex = (statusIndex + 1) % processingStatuses.length;
+    setMicStatus(processingStatuses[statusIndex]);
+  }, 1100);
+  try {
+    const form = new FormData();
+    form.append('audio', waveBlob, 'recording.wav');
+    form.append('language', state.voiceLanguage);
+    form.append('speech_language', state.speechLanguage);
+
+    const response = await fetch('/voice', { method: 'POST', body: form });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.detail || 'Voice processing failed.');
+    }
+
+    ui.transcriptText.textContent = result.transcript || 'I heard the recording, but there was no clear transcript this time.';
+    if (result.status === 'clarification_required') {
+      showTransientNotice('Please confirm the missing detail before we save anything.', '');
+      return;
+    }
+
+    if (result.status !== 'confirmation_required') {
+      throw new Error('Unexpected voice response from the server.');
+    }
+
+    state.confirmationId = result.confirmation_id;
+    state.entries = Array.isArray(result.entries) ? result.entries.map((entry) => ({
+      ...entry,
+      person: entry.person || '',
+      amount: Number(entry.amount || 0),
+      note: entry.note || '',
+      type: entry.type === 'payment_received' ? 'payment_received' : 'credit_given',
+    })) : [];
+
+    renderEntries();
+    ui.confirmationStack.hidden = false;
+    showTransientNotice('Review the entries and save when it looks right.', 'success');
+
+    if (result.audio_base64) {
+      await handleAudioReply(result.audio_base64, result.audio_content_type || 'audio/mpeg');
+    }
+  } catch (error) {
+    showTransientNotice(error.message || 'The recording could not be processed.', 'error');
+  } finally {
+    window.clearInterval(state.statusTimer);
+    state.statusTimer = 0;
+    state.isProcessing = false;
+    setBusy(false);
+    setMicButtonMode('idle');
+    setMicStatus('Press & hold to record');
+  }
+};
+
+const renderEntries = () => {
+  ui.entryCardList.replaceChildren();
+  if (!state.entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'entry-card';
+    empty.textContent = 'No entries ready to save yet.';
+    ui.entryCardList.appendChild(empty);
+    return;
+  }
+
+  state.entries.forEach((entry) => {
+    const card = createEntryCard(entry, () => {
+      showTransientNotice('This entry is ready to save with the final confirmation.', 'success');
+      vibrate(10);
+    }, () => {
+      const next = entry.person || 'Customer';
+      const edited = window.prompt(`Edit customer name for this entry:`, next);
+      if (edited && edited.trim()) {
+        entry.person = edited.trim();
         renderEntries();
       }
     });
-    card.append(person.wrapper, amount.wrapper, note.wrapper, type.wrapper, edit, remove);
-    elements.entryList.append(card);
-    entry._inputs = { person: person.input, amount: amount.input, note: note.input, type: type.input };
+    ui.entryCardList.appendChild(card);
   });
-}
+};
 
-function readEntries() {
+const readEntries = () => {
   return state.entries.map((entry) => {
-    const fields = entry._inputs;
-    const amount = Number(fields.amount.value);
-    const person = fields.person.value.trim();
-    const note = fields.note.value.trim();
+    const person = String(entry.person || '').trim();
+    const note = String(entry.note || '').trim();
+    const amount = Number(entry.amount || 0);
     if (!person || !note || !Number.isFinite(amount) || amount <= 0) {
-      throw new Error("Please enter a person, a positive amount, and a short note for each entry.");
+      throw new Error('Each entry needs a valid customer, positive amount, and short note.');
     }
-    return { person, amount, note, type: fields.type.value };
+    return {
+      person,
+      amount,
+      note,
+      type: entry.type === 'payment_received' ? 'payment_received' : 'credit_given',
+    };
   });
-}
+};
 
-async function confirmProposal() {
-  if (!state.confirmationId || state.busy) return;
-  clearNotice();
+const confirmEntries = async () => {
+  if (!state.confirmationId || state.isBusy) return;
   try {
-    const entries = readEntries();
     setBusy(true);
-    const response = await fetch("/confirm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        confirmation_id: state.confirmationId,
-        confirmed: true,
-        entries,
-      }),
+    const payload = {
+      confirmation_id: state.confirmationId,
+      confirmed: true,
+      entries: readEntries(),
+    };
+
+    const response = await fetch('/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "The entries could not be saved.");
-    resetProposal();
-    showNotice("Your entries are safely in the khata.", "success");
+    if (!response.ok) {
+      throw new Error(result.detail || 'The draft could not be saved.');
+    }
+
+    resetDraft();
+    showTransientNotice('Your ledger has been updated.', 'success');
+    vibrate([24, 18, 24]);
+    emitParticles(document.body, 'rgba(107, 214, 168, 0.9)', 24);
     await loadLedger();
   } catch (error) {
-    showNotice(error.message || "The entries could not be saved.", "error");
+    showTransientNotice(error.message || 'The entry could not be confirmed.', 'error');
   } finally {
     setBusy(false);
   }
-}
+};
 
-async function discardProposal() {
+const discardEntries = async () => {
   if (!state.confirmationId) {
-    resetProposal();
+    resetDraft();
     return;
   }
-  const confirmationId = state.confirmationId;
-  setBusy(true);
+
   try {
-    const response = await fetch("/confirm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmation_id: confirmationId, confirmed: false }),
+    setBusy(true);
+    const response = await fetch('/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation_id: state.confirmationId, confirmed: false }),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "The draft could not be discarded.");
-    resetProposal();
-    showNotice("No worries. Nothing was saved.", "");
+    if (!response.ok) {
+      throw new Error(result.detail || 'The draft could not be discarded.');
+    }
+    resetDraft();
+    showTransientNotice('No worries. Nothing was saved.', '');
   } catch (error) {
-    showNotice(error.message || "The draft could not be discarded.", "error");
+    showTransientNotice(error.message || 'The draft could not be discarded.', 'error');
   } finally {
     setBusy(false);
   }
-}
+};
 
-async function openCustomer(name) {
+const openCustomerDrawer = async (customer) => {
+  state.currentUserName = customer.name;
   try {
-    const response = await fetch(`/customer/${encodeURIComponent(name)}`);
+    const response = await fetch(`/customer/${encodeURIComponent(customer.name)}`);
     const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "Customer details could not be loaded.");
-    const details = result.transactions.length
-      ? result.transactions
-        .map((entry) => `${entry.type === "credit_given" ? "Credit" : "Payment"} · ₹${money.format(entry.amount)} · ${entry.note}`)
-        .join("\n")
-      : "No entries yet.";
-    window.alert(`${result.name} · Balance ₹${money.format(result.balance)}\n\n${details}`);
+    if (!response.ok) throw new Error(result.detail || 'Customer details could not be loaded.');
+
+    const initials = customer.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join('') || 'K';
+    ui.drawerAvatar.textContent = initials;
+    ui.drawerName.textContent = result.name;
+    ui.drawerBalance.textContent = `₹${Math.abs(Number(result.balance || 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    ui.drawerCount.textContent = String(Array.isArray(result.transactions) ? result.transactions.length : 0);
+    ui.drawerTimeline.replaceChildren();
+
+    if (!result.transactions || !result.transactions.length) {
+      const empty = document.createElement('div');
+      empty.className = 'entry-copy';
+      empty.innerHTML = '<strong>No ledger history yet</strong><span>Start by adding a new entry.</span>';
+      ui.drawerTimeline.appendChild(empty);
+    } else {
+      result.transactions.forEach((entry) => {
+        const item = createTimelineEntry({
+          ...entry,
+          type: entry.type === 'payment_received' ? 'payment_received' : 'credit_given',
+        });
+        ui.drawerTimeline.appendChild(item);
+      });
+    }
+
+    ui.customerDrawer.classList.add('is-open');
+    ui.customerDrawer.setAttribute('aria-hidden', 'false');
   } catch (error) {
-    showNotice(error.message, "error");
+    showTransientNotice(error.message || 'Customer details could not be opened.', 'error');
   }
-}
+};
 
-async function loadLedger() {
-  elements.refresh.disabled = true;
+const closeCustomerDrawer = () => {
+  ui.customerDrawer.classList.remove('is-open');
+  ui.customerDrawer.setAttribute('aria-hidden', 'true');
+};
+
+const loadLedger = async () => {
   try {
-    const response = await fetch("/ledger");
+    const response = await fetch('/ledger');
     const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "The ledger could not be loaded.");
-    elements.ledger.replaceChildren();
-    if (!result.customers.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-ledger";
-      const flower = document.createElement("span");
-      flower.textContent = "✳";
-      flower.setAttribute("aria-hidden", "true");
-      const message = document.createElement("p");
-      message.append("Your khata is ready.");
-      const small = document.createElement("span");
-      small.textContent = "New entries will find a home here.";
-      message.append(document.createElement("br"), small);
-      empty.append(flower, message);
-      elements.ledger.append(empty);
+    if (!response.ok) throw new Error(result.detail || 'The ledger could not be loaded.');
+
+    const customers = Array.isArray(result.customers) ? result.customers : [];
+    state.loadedLedger = customers;
+    ui.ledgerList.replaceChildren();
+
+    if (!customers.length) {
+      const empty = document.createElement('div');
+      empty.className = 'ledger-empty-state';
+      const illustration = document.createElement('span');
+      illustration.className = 'ledger-empty-icon';
+      illustration.setAttribute('aria-hidden', 'true');
+      illustration.textContent = '✳';
+      const title = document.createElement('strong');
+      title.textContent = 'Your khata is ready';
+      const message = document.createElement('p');
+      message.textContent = 'Your first voice note will create a customer record.';
+      empty.append(illustration, title, message);
+      ui.ledgerList.appendChild(empty);
       return;
     }
 
-    for (const customer of result.customers) {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "ledger-row";
-      row.setAttribute("aria-label", `${customer.name}, balance ₹${money.format(customer.balance)}. View details.`);
-      const person = document.createElement("span");
-      person.className = "ledger-person";
-      const name = document.createElement("strong");
-      name.textContent = customer.name;
-      const description = document.createElement("span");
-      description.textContent = customer.balance > 0
-        ? "owes you"
-        : customer.balance < 0
-          ? "you owe"
-          : "all settled";
-      person.append(name, description);
-      const balance = document.createElement("span");
-      balance.className = `ledger-balance${customer.balance <= 0 ? " is-clear" : ""}`;
-      const amount = document.createElement("strong");
-      amount.textContent = `₹${money.format(Math.abs(customer.balance))}`;
-      const caption = document.createElement("span");
-      caption.textContent = customer.balance > 0 ? "to collect" : "balance";
-      balance.append(amount, caption);
-      row.append(person, balance);
-      row.addEventListener("click", () => openCustomer(customer.name));
-      elements.ledger.append(row);
+    customers.forEach((customer) => {
+      const row = createLedgerRow(customer, openCustomerDrawer);
+      ui.ledgerList.appendChild(row);
+    });
+  } catch (error) {
+    showTransientNotice(error.message || 'The ledger could not be loaded.', 'error');
+  }
+};
+
+const sendReminder = async () => {
+  if (!state.currentUserName) return;
+  try {
+    const response = await fetch(`/remind/${encodeURIComponent(state.currentUserName)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.detail || 'Reminder could not be sent.');
+    }
+
+    ui.reminderMessage.textContent = result.reminder_text || 'Your reminder is on the way.';
+    ui.reminderChat.hidden = false;
+    if (result.audio_base64) {
+      await handleAudioReply(result.audio_base64, result.audio_content_type || 'audio/mpeg');
     }
   } catch (error) {
-    showNotice(error.message || "The ledger could not be loaded.", "error");
-  } finally {
-    elements.refresh.disabled = false;
+    showTransientNotice(error.message || 'Reminder could not be sent.', 'error');
   }
-}
+};
 
-elements.mic.addEventListener("pointerdown", (event) => {
-  if (event.button !== 0 || state.busy) return;
-  event.preventDefault();
-  elements.mic.setPointerCapture(event.pointerId);
-  startRecording(event.pointerId);
+const animateIntro = () => {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    ui.splash.style.display = 'none';
+    return;
+  }
+
+  const finishIntro = () => {
+    ui.splash.classList.add("is-dismissed");
+    window.setTimeout(() => {
+      ui.splash.hidden = true;
+    }, 380);
+  };
+
+  if (window.gsap) {
+    window.gsap.from('.splash-mark-wrap', {
+      scale: 0.92,
+      opacity: 0,
+      duration: 0.35,
+      ease: 'power2.out',
+    });
+    window.gsap.from('.splash-copy', {
+      y: 8,
+      opacity: 0,
+      duration: 0.32,
+      delay: 0.1,
+      ease: 'power2.out',
+    });
+    window.setTimeout(finishIntro, 650);
+    return;
+  }
+
+  window.setTimeout(finishIntro, 550);
+};
+
+ui.micButton.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0 || state.isBusy) return;
+  state.pointerId = event.pointerId;
+  ui.micButton.setPointerCapture(event.pointerId);
+  startRecording();
 });
-elements.mic.addEventListener("pointerup", (event) => {
-  if (state.pointerId === event.pointerId) stopRecording();
+
+ui.micButton.addEventListener('pointerup', () => {
+  if (state.isRecording) stopRecording();
 });
-elements.mic.addEventListener("pointercancel", stopRecording);
-elements.mic.addEventListener("lostpointercapture", stopRecording);
-elements.mic.addEventListener("keydown", (event) => {
-  if ((event.key === " " || event.key === "Enter") && !event.repeat) {
+
+ui.micButton.addEventListener('pointercancel', stopRecording);
+ui.micButton.addEventListener('pointerleave', () => {
+  if (state.isRecording) stopRecording();
+});
+
+ui.micButton.addEventListener('keydown', (event) => {
+  if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
     event.preventDefault();
     startRecording();
   }
 });
-elements.mic.addEventListener("keyup", (event) => {
-  if (event.key === " " || event.key === "Enter") stopRecording();
+
+ui.micButton.addEventListener('keyup', (event) => {
+  if (event.key === ' ' || event.key === 'Enter') {
+    event.preventDefault();
+    stopRecording();
+  }
 });
-elements.mic.addEventListener("contextmenu", (event) => event.preventDefault());
-elements.confirm.addEventListener("click", confirmProposal);
-elements.discard.addEventListener("click", discardProposal);
-elements.addEntry.addEventListener("click", () => {
-  state.entries.push({ person: "", amount: "", type: "credit_given", note: "" });
-  renderEntries();
-  elements.entryList.lastElementChild?.querySelector("input")?.focus();
+
+ui.confirmButton.addEventListener('click', confirmEntries);
+ui.discardButton.addEventListener('click', discardEntries);
+ui.refreshLedger.addEventListener('click', loadLedger);
+ui.closeDrawer.addEventListener('click', closeCustomerDrawer);
+ui.sendReminder.addEventListener('click', sendReminder);
+ui.customerDrawer.addEventListener('click', (event) => {
+  if (event.target.dataset.close === 'drawer') closeCustomerDrawer();
 });
-elements.refresh.addEventListener("click", loadLedger);
-elements.voiceCard = document.querySelector(".voice-card");
+
+ui.languageButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    setLanguage(button.dataset.lang);
+    showTransientNotice(`Language set to ${button.textContent.trim()}.`, '');
+  });
+});
+
+window.addEventListener('pointermove', (event) => {
+  if (window.matchMedia('(pointer: coarse)').matches) return;
+  ui.pointerGlow.style.transform = `translate3d(${event.clientX - 110}px, ${event.clientY - 110}px, 0)`;
+  ui.pointerGlow.style.opacity = '1';
+});
+
+window.addEventListener('pointerleave', () => {
+  ui.pointerGlow.style.opacity = '0';
+});
+
+ui.audio.addEventListener('play', () => {
+  micVisualizer.bindAudio(ui.audio);
+  micVisualizer.setPlayback();
+});
+
+ui.audio.addEventListener('pause', () => {
+  micVisualizer.setIdle();
+});
+
+setLanguage('hi-en');
+showTransientNotice('Ready to listen to your shop notes.', '');
 loadLedger();
+animateIntro();

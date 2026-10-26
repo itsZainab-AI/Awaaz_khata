@@ -3,117 +3,180 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#f8f4eb">
-    <meta name="description" content="A warm, voice-first khata for your everyday shop ledger.">
-    <title>Awaaz Khata — your friendly shop ledger</title>
+    <meta name="theme-color" content="#0f0b1e">
+    <meta name="description" content="Awaaz Khata, a voice-led ledger for Indian shopkeepers." />
+    <title>Awaaz Khata</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="/frontend/styles.css">
-    <script src="/frontend/app.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" async></script>
+    <script type="module" src="/frontend/app.js" defer></script>
   </head>
-  <body>
-    <div class="splash-screen" id="splash-screen" aria-hidden="true">
-      <div class="splash-content">
-        <span class="splash-mark">आ</span>
-        <p class="splash-title">Awaaz Khata</p>
-        <p class="splash-tagline">Your everyday shop khata</p>
-        <span class="splash-loader" aria-hidden="true"></span>
+  <body data-theme="dark">
+    <div class="page-noise" aria-hidden="true"></div>
+    <div id="pointer-glow" aria-hidden="true"></div>
+
+    <div class="splash-screen" id="splash-screen">
+      <div class="splash-mark-wrap" aria-hidden="true">
+        <svg viewBox="0 0 64 64" class="splash-mark" role="img" aria-label="Awaaz Khata logo">
+          <circle cx="32" cy="32" r="29"/>
+          <rect x="26" y="13" width="12" height="25" rx="6"/>
+          <path d="M19 30v3a13 13 0 0 0 26 0v-3M32 46v7m-8 0h16"/>
+        </svg>
+      </div>
+      <div class="splash-copy">
+        <p class="splash-kicker">Awaaz Khata</p>
+        <h1>Bolo, hisaab ho jayega</h1>
       </div>
     </div>
-    <main class="page-shell">
+
+    <div class="app-shell">
       <header class="topbar">
-        <a class="brand" href="/" aria-label="Awaaz Khata home">
-          <span class="brand-mark" aria-hidden="true">आ</span>
+        <div class="brand" aria-label="Awaaz Khata home">
+          <svg viewBox="0 0 64 64" class="brand-mark" aria-hidden="true">
+            <circle cx="32" cy="32" r="29"/>
+            <rect x="26" y="13" width="12" height="25" rx="6"/>
+            <path d="M19 30v3a13 13 0 0 0 26 0v-3M32 46v7m-8 0h16"/>
+          </svg>
           <span>Awaaz Khata</span>
-        </a>
-        <label class="language-control">
-          <span class="sr-only">Recording language</span>
-          <select id="language" aria-label="Recording language">
-            <option value="hi-IN" data-speech="hi-en">हिन्दी</option>
-            <option value="mr-IN" data-speech="mr-IN">मराठी</option>
-            <option value="en-IN" data-speech="en-IN">English</option>
-          </select>
-          <span class="select-chevron" aria-hidden="true">⌄</span>
-        </label>
+        </div>
+
+        <div class="language-toggle" aria-label="Select language" id="language-toggle">
+          <button class="active" type="button" data-lang="hi-en">Hinglish</button>
+          <button type="button" data-lang="hi-IN">हिन्दी</button>
+          <button type="button" data-lang="mr-IN">मराठी</button>
+        </div>
       </header>
 
-      <section class="welcome">
-        <p class="eyebrow">YOUR EVERYDAY SHOP KHATA</p>
-        <h1>A little easier,<br><span>one conversation at a time.</span></h1>
-        <p class="welcome-copy">Tell me what happened. I’ll listen, write it down, and wait for your okay.</p>
-      </section>
-
-      <section class="voice-card" aria-labelledby="voice-heading">
-        <div class="voice-card-heading">
-          <div>
-            <p class="eyebrow">ADD AN ENTRY</p>
-            <h2 id="voice-heading">What should we note?</h2>
+      <main class="main-stage">
+        <section class="hero-panel glass-card">
+          <div class="hero-copy">
+            <p class="eyebrow">Voice-led ledger</p>
+            <h2>Khata, as easy as a quick hello.</h2>
+            <p class="hero-text">Tell me what happened in your shop. I will listen, sort the numbers, and keep your ledger neat.</p>
           </div>
-          <span class="listen-badge"><span class="status-dot"></span><span id="recording-status">Ready when you are</span></span>
-        </div>
-        <div class="mic-area">
-          <button class="mic-button" id="mic-button" type="button" aria-label="Hold to record">
-            <svg viewBox="0 0 32 32" aria-hidden="true">
-              <rect x="11" y="4" width="10" height="17" rx="5"></rect>
-              <path d="M7 15v1a9 9 0 0 0 18 0v-1M16 25v4m-5 0h10"></path>
-            </svg>
-          </button>
-          <p class="mic-hint" id="mic-hint">Press and hold to talk<br><span>Let go when you’re finished</span></p>
-        </div>
-        <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
-        <audio id="reply-audio" controls hidden></audio>
 
-        <div class="transcript-block" id="transcript-block" hidden>
-          <p class="eyebrow">I HEARD</p>
-          <p class="transcript-text" id="transcript"></p>
-        </div>
-
-        <div class="clarification-block" id="clarification-block" hidden>
-          <span class="clarification-icon" aria-hidden="true">?</span>
-          <div>
-            <p class="eyebrow">ONE QUICK QUESTION</p>
-            <p id="clarification-question"></p>
-          </div>
-        </div>
-
-        <div class="entries-block" id="entries-block" hidden>
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">BEFORE IT GOES IN YOUR BOOK</p>
-              <h3>Does this look right?</h3>
+          <div class="mic-stage-wrap">
+            <div class="mic-stage" aria-live="polite">
+              <div class="pulse-ring pulse-ring-one"></div>
+              <div class="pulse-ring pulse-ring-two"></div>
+              <canvas id="mic-canvas" width="620" height="620" aria-hidden="true"></canvas>
+              <button id="mic-button" class="mic-button" type="button" aria-label="Hold to record">
+                <svg class="mic-icon" viewBox="0 0 48 48" aria-hidden="true">
+                  <rect x="18" y="5" width="12" height="25" rx="6"/>
+                  <path d="M11 22v3a13 13 0 0 0 26 0v-3M24 38v6m-8 0h16"/>
+                </svg>
+              </button>
             </div>
-            <button class="text-button" id="add-entry" type="button">+ Add entry</button>
+            <p class="mic-status" id="mic-status">Press & hold to record</p>
           </div>
-          <div class="entry-list" id="entry-list"></div>
-          <div class="confirm-actions">
-            <button class="button button-quiet" id="discard-button" type="button">Not now</button>
-            <button class="button button-primary" id="confirm-button" type="button">Looks good, save it <span aria-hidden="true">→</span></button>
-          </div>
-        </div>
-      </section>
 
-      <section class="ledger-section" aria-labelledby="ledger-heading">
-        <div class="ledger-heading">
+          <aside class="summary-card glass-card">
+            <div class="summary-header">
+              <div>
+                <p class="eyebrow">Aaj ka hisaab</p>
+                <h3>Today’s summary</h3>
+              </div>
+              <span class="summary-pill">Live</span>
+            </div>
+            <div class="summary-stats">
+              <div>
+                <strong data-value="14">₹0</strong>
+                <span>Credit</span>
+              </div>
+              <div>
+                <strong data-value="9">₹0</strong>
+                <span>Paid</span>
+              </div>
+              <div>
+                <strong data-value="5">₹0</strong>
+                <span>Customers</span>
+              </div>
+            </div>
+            <div class="mini-chart" aria-hidden="true">
+              <span style="--i: 0.2"></span>
+              <span style="--i: 0.43"></span>
+              <span style="--i: 0.58"></span>
+              <span style="--i: 0.71"></span>
+              <span style="--i: 0.9"></span>
+              <span style="--i: 0.65"></span>
+              <span style="--i: 0.76"></span>
+            </div>
+          </aside>
+        </section>
+
+        <section class="content-grid">
+          <div class="transcript-panel glass-card">
+            <div class="panel-header">
+              <p class="eyebrow">Transcript</p>
+              <span class="status-dot"></span>
+            </div>
+            <div class="transcript-box" id="transcript-box">
+              <p id="transcript-text">The recording is ready to be translated.</p>
+            </div>
+            <div class="confirmation-stack" id="confirmation-stack" hidden>
+              <div class="confirmation-card" id="entry-card-list"></div>
+              <div class="action-row">
+                <button type="button" class="ghost-btn" id="discard-button">Not now</button>
+                <button type="button" class="primary-btn" id="confirm-button">Save entry</button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="ledger-panel glass-card">
+            <div class="panel-header ledger-header">
+              <div>
+                <p class="eyebrow">Ledger</p>
+                <h3>Who owes what</h3>
+              </div>
+              <button type="button" class="icon-btn" id="refresh-ledger" aria-label="Refresh ledger">↻</button>
+            </div>
+            <div id="ledger-list" class="ledger-list" aria-live="polite"></div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <div class="notice hidden" id="notice" role="status" aria-live="polite"></div>
+    <audio id="reply-audio" controls hidden></audio>
+
+    <div class="customer-drawer" id="customer-drawer" aria-hidden="true">
+      <div class="drawer-backdrop" data-close="drawer"></div>
+      <div class="drawer-panel">
+        <div class="drawer-header">
+          <div class="drawer-title-wrap">
+            <div class="drawer-avatar" id="drawer-avatar">A</div>
+            <div>
+              <span class="eyebrow">Profile</span>
+              <h3 id="drawer-name">Customer</h3>
+            </div>
+          </div>
+          <button type="button" class="close-button" id="close-drawer" aria-label="Close customer details">×</button>
+        </div>
+        <div class="drawer-stats">
           <div>
-            <p class="eyebrow">YOUR PEOPLE</p>
-            <h2 id="ledger-heading">Who owes what</h2>
+            <span>Balance</span>
+            <strong id="drawer-balance">₹0</strong>
           </div>
-          <button class="refresh-button" id="refresh-ledger" type="button" aria-label="Refresh ledger">↻</button>
-        </div>
-        <div class="ledger-list" id="ledger-list" aria-live="polite">
-          <div class="empty-ledger">
-            <span aria-hidden="true">✳</span>
-            <p>Your khata is ready.<br><span>New entries will find a home here.</span></p>
+          <div>
+            <span>Total entries</span>
+            <strong id="drawer-count">0</strong>
           </div>
         </div>
-        <p class="ledger-footnote">A kind reminder goes a long way. 🌿</p>
-      </section>
-
-      <footer class="page-footer">
-        <span class="footer-flower" aria-hidden="true">✳</span>
-        <span>Made for the little things that matter.</span>
-      </footer>
-    </main>
+        <div class="timeline" id="drawer-timeline"></div>
+        <button type="button" class="primary-btn reminder-btn" id="send-reminder">
+          <span class="bubble-icon">✦</span>
+          Send reminder
+        </button>
+        <div class="reminder-chat" id="reminder-chat" hidden>
+          <div class="chat-head">WhatsApp reminder</div>
+          <div class="chat-bubble">
+            <span class="chat-play" aria-hidden="true">▶</span>
+            <p id="reminder-message">Hello, your balance is due.</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
