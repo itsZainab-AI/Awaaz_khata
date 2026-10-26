@@ -10,6 +10,7 @@ const ui = {
   micButton: document.querySelector('#mic-button'),
   micStatus: document.querySelector('#mic-status'),
   transcriptText: document.querySelector('#transcript-text'),
+  transcriptState: document.querySelector('#transcript-state'),
   transcriptOriginal: document.querySelector('#transcript-original'),
   transcriptFeedback: document.querySelector('#transcript-feedback'),
   notice: document.querySelector('#notice'),
@@ -25,6 +26,7 @@ const ui = {
   refreshLedger: document.querySelector('#refresh-ledger'),
   languageButtons: [...document.querySelectorAll('#language-toggle button')],
   customerDrawer: document.querySelector('#customer-drawer'),
+  drawerHandle: document.querySelector('.drawer-handle'),
   drawerAvatar: document.querySelector('#drawer-avatar'),
   drawerName: document.querySelector('#drawer-name'),
   drawerBalance: document.querySelector('#drawer-balance'),
@@ -34,6 +36,7 @@ const ui = {
   sendReminder: document.querySelector('#send-reminder'),
   reminderChat: document.querySelector('#reminder-chat'),
   reminderMessage: document.querySelector('#reminder-message'),
+  reminderActions: document.querySelector('#reminder-actions'),
   pointerGlow: document.querySelector('#pointer-glow'),
 };
 
@@ -129,18 +132,31 @@ const transliterateDevanagari = (text) => {
   return result;
 };
 
-const setTranscript = (transcript, feedback = '') => {
+const setTranscript = (transcript, feedback = '', status = 'done') => {
   const original = String(transcript || '').trim();
   state.originalTranscript = original;
   state.transcriptFeedback = feedback;
   const display = state.selectedLanguage === 'hi-en'
     ? transliterateDevanagari(original)
     : original;
-  ui.transcriptText.textContent = display || 'The recording is ready to be translated.';
+  ui.transcriptText.textContent = display;
   ui.transcriptOriginal.textContent = original ? `Original: ${original}` : '';
   ui.transcriptOriginal.hidden = !original;
   ui.transcriptFeedback.textContent = feedback;
   ui.transcriptFeedback.hidden = !feedback;
+  setTranscriptStatus(status);
+};
+
+const setTranscriptStatus = (status, message = '') => {
+  const labels = {
+    idle: 'Ready',
+    listening: 'Listening',
+    processing: 'Processing',
+    done: 'Done',
+    error: 'Error',
+  };
+  ui.transcriptState.dataset.state = status;
+  ui.transcriptState.textContent = message || labels[status] || labels.idle;
 };
 
 const setMicStatus = (message) => {
@@ -226,6 +242,7 @@ const startRecording = async () => {
   resetDraft();
   setMicButtonMode('recording');
   setMicStatus('Listening… release to finish');
+  setTranscriptStatus('listening');
   state.isRecording = true;
   vibrate(18);
   emitParticles(ui.micButton, 'rgba(255, 153, 51, 0.85)', 22);
@@ -252,6 +269,7 @@ const startRecording = async () => {
     state.mediaRecorder.addEventListener('stop', async () => {
       try {
         if (!state.chunks.length) {
+          setTranscriptStatus('error', 'No audio captured');
           showTransientNotice('No sound was captured. Please try again.', 'error');
           setMicButtonMode('idle');
           setMicStatus('Press & hold to record');
@@ -264,6 +282,7 @@ const startRecording = async () => {
         await submitVoice(wav);
       } catch (error) {
         state.isProcessing = false;
+        setTranscriptStatus('error', 'Could not process recording');
         setBusy(false);
         setMicButtonMode('idle');
         setMicStatus('Press & hold to record');
@@ -274,6 +293,7 @@ const startRecording = async () => {
     state.mediaRecorder.start();
   } catch (error) {
     state.isRecording = false;
+    setTranscriptStatus('error', 'Microphone unavailable');
     setMicButtonMode('idle');
     setMicStatus('Press & hold to record');
     stopMicrophone();
@@ -288,6 +308,7 @@ const stopRecording = () => {
   state.isRecording = false;
   setMicButtonMode('processing');
   setMicStatus('Processing your words…');
+  setTranscriptStatus('processing');
   if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
     state.mediaRecorder.stop();
   }
@@ -385,7 +406,7 @@ const submitVoice = async (waveBlob) => {
 
     if (result.status === 'unrecognized' || result.status === 'clarification_required') {
       const message = result.message || result.clarification_question || 'Samajh nahi aaya, phir se bolo.';
-      setTranscript(result.transcript, message);
+      setTranscript(result.transcript, message, 'error');
       showTransientNotice(message, '');
       if (result.audio_base64) {
         await handleAudioReply(result.audio_base64, result.audio_content_type || 'audio/mpeg');
@@ -394,6 +415,14 @@ const submitVoice = async (waveBlob) => {
     }
 
     setTranscript(result.transcript);
+    if (result.status === 'query_answer') {
+      showTransientNotice(result.answer || 'Your khata query is ready.', 'success');
+      if (result.audio_base64) {
+        await handleAudioReply(result.audio_base64, result.audio_content_type || 'audio/mpeg');
+      }
+      return;
+    }
+
     if (result.status === 'customer_created') {
       ui.entryCardList.replaceChildren();
       const card = document.createElement('div');
@@ -441,6 +470,7 @@ const submitVoice = async (waveBlob) => {
       await handleAudioReply(result.audio_base64, result.audio_content_type || 'audio/mpeg');
     }
   } catch (error) {
+    setTranscriptStatus('error', 'Could not process recording');
     showTransientNotice(error.message || 'The recording could not be processed.', 'error');
   } finally {
     window.clearInterval(state.statusTimer);
@@ -594,6 +624,21 @@ const closeCustomerDrawer = () => {
   ui.customerDrawer.setAttribute('aria-hidden', 'true');
 };
 
+let drawerPointerStart = null;
+ui.drawerHandle.addEventListener('pointerdown', (event) => {
+  drawerPointerStart = event.clientY;
+  ui.drawerHandle.setPointerCapture(event.pointerId);
+});
+ui.drawerHandle.addEventListener('pointerup', (event) => {
+  if (drawerPointerStart !== null && event.clientY - drawerPointerStart > 55) {
+    closeCustomerDrawer();
+  }
+  drawerPointerStart = null;
+});
+ui.drawerHandle.addEventListener('pointercancel', () => {
+  drawerPointerStart = null;
+});
+
 const loadLedger = async () => {
   try {
     const response = await fetch('/ledger');
@@ -622,7 +667,7 @@ const loadLedger = async () => {
         String(customers.length);
     }
 
-    if (!hasTransactions) {
+    if (!customers.length) {
       const empty = document.createElement('div');
       empty.className = 'ledger-empty-state';
       const illustration = document.createElement('span');
@@ -680,6 +725,21 @@ const sendReminder = async () => {
     }
 
     ui.reminderMessage.textContent = result.reminder_text || 'Your reminder is on the way.';
+    ui.reminderActions.replaceChildren();
+    const whatsapp = document.createElement('a');
+    whatsapp.className = 'primary-btn reminder-link';
+    whatsapp.href = result.whatsapp_url;
+    whatsapp.target = '_blank';
+    whatsapp.rel = 'noopener noreferrer';
+    whatsapp.textContent = 'Open WhatsApp';
+    ui.reminderActions.appendChild(whatsapp);
+    if (result.upi_link) {
+      const payment = document.createElement('a');
+      payment.className = 'ghost-btn reminder-link';
+      payment.href = result.upi_link;
+      payment.textContent = `Pay ₹${Number(result.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })} by UPI`;
+      ui.reminderActions.appendChild(payment);
+    }
     ui.reminderChat.hidden = false;
     if (result.audio_base64) {
       await handleAudioReply(result.audio_base64, result.audio_content_type || 'audio/mpeg');
@@ -761,6 +821,43 @@ ui.ledgerList.addEventListener('click', (event) => {
 });
 ui.closeDrawer.addEventListener('click', closeCustomerDrawer);
 ui.sendReminder.addEventListener('click', sendReminder);
+const downloadExport = async (url, fallbackName) => {
+try {
+  const response = await fetch(url);
+  if (!response.ok) {
+    const result = await response.json();
+    throw new Error(result.detail || 'The export could not be created.');
+  }
+  const blob = await response.blob();
+  const urlObject = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  const disposition = response.headers.get('Content-Disposition') || '';
+  anchor.download = disposition.match(/filename="([^"]+)"/)?.[1] || fallbackName;
+  anchor.href = urlObject;
+  anchor.click();
+  URL.revokeObjectURL(urlObject);
+} catch (error) {
+  showTransientNotice(error.message || 'The export could not be created.', 'error');
+}
+};
+
+document.querySelectorAll('[data-export-customer]').forEach((button) => {
+button.addEventListener('click', () => {
+  if (!state.currentUserName) return;
+  const type = button.dataset.exportCustomer;
+  downloadExport(
+    `/export/customer/${encodeURIComponent(state.currentUserName)}?format=${type}`,
+    'customer-khata',
+  );
+});
+});
+
+document.querySelectorAll('[data-export-ledger]').forEach((button) => {
+button.addEventListener('click', () => {
+  const type = button.dataset.exportLedger;
+  downloadExport(`/export/ledger?format=${type}`, `awaaz-khata-ledger.${type}`);
+});
+});
 ui.customerDrawer.addEventListener('click', (event) => {
   if (event.target.dataset.close === 'drawer') closeCustomerDrawer();
 });
@@ -793,5 +890,20 @@ ui.audio.addEventListener('pause', () => {
 
 setLanguage('hi-en');
 showTransientNotice('Ready to listen to your shop notes.', '');
-loadLedger();
 animateIntro();
+
+fetch('/api/me')
+  .then(async (response) => {
+    if (response.status === 401) {
+      window.location.replace('/login');
+      return false;
+    }
+    if (!response.ok) throw new Error('Your shop session could not be checked.');
+    return true;
+  })
+  .then((authenticated) => {
+    if (authenticated) loadLedger();
+  })
+  .catch((error) => {
+    showTransientNotice(error.message || 'Please log in to open your khata.', 'error');
+  });

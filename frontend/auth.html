@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f0b1e">
+    <link rel="manifest" href="/frontend/manifest.webmanifest">
+    <meta name="description" content="Sign in to your Awaaz Khata voice ledger.">
+    <title>Awaaz Khata — Your shop, your hisaab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="/frontend/styles.css">
+    <script type="module" src="/frontend/auth-page.js"></script>
+    <script type="module" src="/frontend/pwa.js"></script>
+  </head>
+  <body class="auth-page" data-theme="dark">
+    <div class="page-noise" aria-hidden="true"></div>
+    <div class="offline-banner" id="offline-banner" role="status" aria-live="polite" hidden>
+      You’re offline. Log in or register when your connection returns.
+    </div>
+    <main class="auth-shell">
+      <a class="brand auth-brand" href="/"><span class="brand-mark-small" aria-hidden="true">आ</span><span>Awaaz Khata</span></a>
+      <section class="auth-card glass-card">
+        <p class="eyebrow">Bolo, hisaab ho jayega</p>
+        <div id="auth-error" class="auth-error" role="alert" hidden></div>
+        <form id="login-form" novalidate>
+          <h1>Welcome back</h1>
+          <p class="auth-intro">Your shop’s udhaar and hisaab, ready when you are.</p>
+          <label for="login-phone"><span data-copy="phone">Phone number</span><input id="login-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="98765 43210" required></label>
+          <label for="login-pin"><span data-copy="pin">4–6 digit PIN</span><input id="login-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" minlength="4" maxlength="6" autocomplete="current-password" required></label>
+          <button class="primary-btn auth-submit" type="submit">Log in</button>
+          <button class="ghost-btn auth-submit" type="button" id="demo-login">Try demo shop</button>
+          <p class="auth-switch">New to Awaaz Khata? <a href="/register">Create your shop account</a></p>
+        </form>
+
+        <form id="register-form" novalidate hidden>
+          <h1>Let’s set up your shop</h1>
+          <p class="auth-intro">A voice ledger for the udhaar you track today in notebooks or memory.</p>
+          <div class="language-picker">
+            <label for="form-language">Language / भाषा</label>
+            <select id="form-language" name="language">
+              <option value="hi-en">Hinglish</option>
+              <option value="hi-IN">हिन्दी</option>
+              <option value="mr-IN">मराठी</option>
+            </select>
+          </div>
+          <label for="shop-name"><span data-copy="shop" data-en="Shop name" data-hi="दुकान का नाम" data-mr="दुकानाचे नाव">Shop name</span><input id="shop-name" name="shop_name" type="text" minlength="2" maxlength="80" autocomplete="organization" required></label>
+          <label for="owner-name"><span data-copy="owner" data-en="Owner name" data-hi="मालिक का नाम" data-mr="मालकाचे नाव">Owner name</span><input id="owner-name" name="owner_name" type="text" minlength="2" maxlength="80" autocomplete="name" required></label>
+          <label for="register-phone"><span data-copy="phone" data-en="Phone number" data-hi="फ़ोन नंबर" data-mr="फोन नंबर">Phone number</span><input id="register-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="98765 43210" required></label>
+          <label for="register-pin"><span data-copy="pin" data-en="Create a 4–6 digit PIN" data-hi="4–6 अंकों का PIN बनाएं" data-mr="4–6 अंकी PIN तयार करा">Create a 4–6 digit PIN</span><input id="register-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" minlength="4" maxlength="6" autocomplete="new-password" required></label>
+          <label for="upi-id"><span data-copy="upi" data-en="UPI ID (optional)" data-hi="UPI ID (ज़रूरी नहीं)" data-mr="UPI ID (ऐच्छिक)">UPI ID (optional)</span><input id="upi-id" name="upi_id" type="text" maxlength="120" autocomplete="off" placeholder="shop@upi"></label>
+          <p class="privacy-note">Your PIN is securely hashed. We never store your voice recordings, and your shop’s hisaab stays private.</p>
+          <button class="primary-btn auth-submit" type="submit">Create my khata</button>
+          <p class="auth-switch">Already have an account? <a href="/login">Log in</a></p>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

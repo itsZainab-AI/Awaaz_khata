@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f0b1e">
+    <link rel="manifest" href="/frontend/manifest.webmanifest">
+    <meta name="description" content="Manage your Awaaz Khata shop settings and privacy.">
+    <title>Settings — Awaaz Khata</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="/frontend/styles.css">
+    <script type="module" src="/frontend/settings-page.js"></script>
+    <script type="module" src="/frontend/pwa.js"></script>
+  </head>
+  <body class="auth-page" data-theme="dark">
+    <div class="page-noise" aria-hidden="true"></div>
+    <div class="offline-banner" id="offline-banner" role="status" aria-live="polite" hidden>
+      You’re offline. Settings will save when your connection returns.
+    </div>
+    <main class="auth-shell settings-shell">
+      <header class="settings-nav">
+        <a class="brand" href="/dashboard"><span class="brand-mark-small" aria-hidden="true">आ</span><span>Awaaz Khata</span></a>
+        <a class="ghost-btn" href="/dashboard">Back to khata</a>
+      </header>
+      <section class="settings-card glass-card">
+        <p class="eyebrow">Your account</p>
+        <h1>Shop settings</h1>
+        <p class="auth-intro">Your shop’s hisaab, in the language you prefer.</p>
+        <div id="settings-error" class="auth-error" role="alert" hidden></div>
+        <form id="settings-form">
+          <label for="settings-shop-name">Shop name<input id="settings-shop-name" name="shop_name" minlength="2" maxlength="80" required></label>
+          <label for="settings-language">Preferred language
+            <select id="settings-language" name="language">
+              <option value="hi-en">Hinglish</option>
+              <option value="hi-IN">हिन्दी</option>
+              <option value="mr-IN">मराठी</option>
+            </select>
+          </label>
+          <label for="settings-upi">UPI ID<input id="settings-upi" name="upi_id" maxlength="120" placeholder="shop@upi"></label>
+          <button class="primary-btn auth-submit" type="submit">Save settings</button>
+        </form>
+        <div class="settings-account-actions">
+          <button class="ghost-btn auth-submit" type="button" id="logout-button">Log out</button>
+          <button class="danger-btn auth-submit" type="button" id="delete-account">Delete my data</button>
+        </div>
+        <p class="privacy-note">Your shop data is private to this account. Deleting your account permanently removes its customers and entries.</p>
+      </section>
+    </main>
+  </body>
+</html>

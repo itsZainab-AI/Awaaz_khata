@@ -1,6 +1,7 @@
 import argparse
 import json
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ from backend.parser import (
     ParserError,
     ParserProvider,
     parse_fallback,
+    parse_query_intent,
     parse_transactions,
     parse_with_provider,
     _default_provider,
@@ -140,6 +142,34 @@ class FallbackParserTests(unittest.TestCase):
                 success, detail = _matches_case(parse_fallback, case)
                 self.assertTrue(success, detail)
 
+    def test_ledger_query_intents(self):
+        cases = [
+            (
+                "Ramesh ka kitna baaki hai?",
+                {"intent": "customer_balance", "person": "ramesh", "days": None},
+            ),
+            (
+                "Aaj kitna udhaar diya?",
+                {"intent": "today_credit", "person": None, "days": None},
+            ),
+            (
+                "Kisne 30 din se nahi diya?",
+                {"intent": "unpaid_since", "person": None, "days": 30},
+            ),
+            (
+                "किसने ३० दिन से नहीं दिया?",
+                {"intent": "unpaid_since", "person": None, "days": 30},
+            ),
+        ]
+        for transcript, expected in cases:
+            with self.subTest(transcript=transcript):
+                parsed = parse_query_intent(transcript)
+                self.assertIsNotNone(parsed)
+                self.assertEqual(parsed.model_dump(), expected)
+
+    def test_unrecognized_question_is_not_a_query(self):
+        self.assertIsNone(parse_query_intent("Ramesh ko 500 udhaar diya"))
+
     def test_gemini_provider_requests_json_and_validates_response(self):
         provider = GeminiProvider("test-key", "test-model", 5)
         response = SimpleNamespace(
@@ -196,6 +226,43 @@ class FallbackParserTests(unittest.TestCase):
                 )
                 self.assertEqual(provider.calls, 2)
                 self.assertEqual(cached_result, result)
+
+    def test_parser_cache_is_isolated_by_shop_id(self):
+        class ShopProvider(ParserProvider):
+            def __init__(self, person):
+                self.person = person
+
+            def parse(self, transcript):
+                return ParseResult(
+                    transactions=[{
+                        "person": self.person,
+                        "amount": 500,
+                        "type": "credit_given",
+                        "note": "udhaar diya",
+                    }],
+                    clarification_question=None,
+                )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            cache_path = Path(temporary) / "cache.sqlite3"
+            with patch.dict("os.environ", {"PARSER_CACHE_PATH": str(cache_path)}):
+                first_shop = parse_transactions(
+                    "same voice transcript",
+                    ShopProvider("Ramesh"),
+                    shop_id=1,
+                )
+                second_shop = parse_transactions(
+                    "same voice transcript",
+                    ShopProvider("Sita"),
+                    shop_id=2,
+                )
+            self.assertEqual(first_shop[0]["person"], "Ramesh")
+            self.assertEqual(second_shop[0]["person"], "Sita")
+            with sqlite3.connect(cache_path) as connection:
+                shop_ids = connection.execute(
+                    "SELECT shop_id FROM parser_cache ORDER BY shop_id"
+                ).fetchall()
+            self.assertEqual(shop_ids, [(1,), (2,)])
 
     def test_provider_failure_falls_back_after_one_retry(self):
         class FailingProvider(ParserProvider):

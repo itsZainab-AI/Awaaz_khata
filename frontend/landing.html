@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f0b1e">
+    <link rel="manifest" href="/frontend/manifest.webmanifest">
+    <meta name="description" content="Awaaz Khata is a ledger you talk to, in your own language. Bolo, hisaab ho jayega.">
+    <title>Awaaz Khata — Bolo, hisaab ho jayega</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="/frontend/styles.css">
+    <script type="module" src="/frontend/landing.js"></script>
+  </head>
+  <body class="marketing-page" data-theme="dark">
+    <div class="page-noise" aria-hidden="true"></div>
+    <div class="offline-banner" id="offline-banner" role="status" aria-live="polite" hidden>
+      You’re offline. Reconnect to try the demo shop or create an account.
+    </div>
+    <header class="marketing-nav">
+      <a class="brand" href="/" aria-label="Awaaz Khata home">
+        <span class="brand-mark-small" aria-hidden="true">आ</span>
+        <span>Awaaz Khata</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="/login">Log in</a>
+        <a class="primary-btn" href="/register">Get started</a>
+      </nav>
+    </header>
+
+    <main class="marketing-shell">
+      <section class="marketing-hero">
+        <div class="marketing-hero-copy">
+          <p class="eyebrow">A ledger you talk to, in your own language</p>
+          <h1>Udhaar is easy to give.<br><span>Hard to keep track of.</span></h1>
+          <p class="hero-text">Paper notebooks and memory lose entries. Awaaz Khata helps small shopkeepers keep every hisaab by speaking naturally — no typing, no accounting app.</p>
+          <p class="marketing-tagline">Bolo, hisaab ho jayega.</p>
+          <div class="marketing-actions">
+            <a class="primary-btn" href="/register">Get started</a>
+            <button class="ghost-btn" type="button" id="try-demo">Try demo shop</button>
+          </div>
+          <p class="marketing-error" id="landing-error" role="alert" hidden></p>
+        </div>
+        <div class="demo-orb-stage" aria-label="Animated voice assistant demo">
+          <div class="demo-orb-halo"></div>
+          <div class="demo-orb"><span>आ</span></div>
+          <p class="demo-orb-caption">Bolo. We’ll keep the hisaab.</p>
+        </div>
+      </section>
+
+      <section class="marketing-section" id="how-it-works">
+        <p class="eyebrow">As easy as talking</p>
+        <h2>How it works</h2>
+        <div class="steps-grid">
+          <article class="feature-card"><span class="step-number">01</span><h3>Bolo</h3><p>Say it naturally in Hinglish, Hindi, or Marathi. “Ramesh ko 500 udhaar diya.”</p></article>
+          <article class="feature-card"><span class="step-number">02</span><h3>Samjho</h3><p>Awaaz Khata shows the transcript and entry so you can review it before saving.</p></article>
+          <article class="feature-card"><span class="step-number">03</span><h3>Hisaab</h3><p>Your customer balances and transactions stay together in one clear ledger.</p></article>
+        </div>
+      </section>
+
+      <section class="marketing-section">
+        <p class="eyebrow">Made for the way shops work</p>
+        <h2>Your voice. Your language. Your khata.</h2>
+        <div class="steps-grid feature-grid">
+          <article class="feature-card"><h3>Speak, don’t type</h3><p>Record everyday shop entries without an English keyboard or an accounting app.</p></article>
+          <article class="feature-card"><h3>Clear customer history</h3><p>See udhaar and payments together, so entries don’t get lost and disputes are easier to resolve.</p></article>
+          <article class="feature-card"><h3>Remind with care</h3><p>Prepare a polite WhatsApp reminder when it’s time to follow up — without the awkwardness.</p></article>
+        </div>
+      </section>
+
+      <section class="why-section">
+        <p class="eyebrow">Why we built this</p>
+        <h2>Shopkeepers talk all day.<br>Their khata should listen.</h2>
+        <p>Across India, small shopkeepers run on udhaar recorded in paper notebooks or memory. Pages go missing, amounts get disputed, and chasing money feels awkward. We built Awaaz Khata to make keeping hisaab as natural as saying it aloud — in the language you already use.</p>
+      </section>
+    </main>
+
+    <footer class="marketing-footer">
+      <a class="brand" href="/">Awaaz Khata</a>
+      <span>Built with Gnani Prisma + Timbre</span>
+      <span>Bolo, hisaab ho jayega.</span>
+    </footer>
+    <script type="module" src="/frontend/landing.js"></script>
+    <script type="module" src="/frontend/pwa.js"></script>
+  </body>
+</html>

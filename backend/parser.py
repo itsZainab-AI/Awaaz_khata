@@ -36,12 +36,12 @@ class Transaction(BaseModel):
     person: str = Field(min_length=1)
     amount: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     type: Literal["credit_given", "payment_received", "create_customer"]
-    note: str = ""
+    note: str = Field(default="", max_length=80)
 
     @model_validator(mode="after")
     def normalize_fields(self):
         self.person = _normalize_person(self.person)
-        self.note = self.note.strip()
+        self.note = _normalize_note(self.note, self.person, self.amount)
         if not self.person:
             raise ValueError("person must contain a name")
         if self.type == "create_customer" and self.amount is not None:
@@ -50,6 +50,22 @@ class Transaction(BaseModel):
             raise ValueError("transactions must include an amount")
         if self.type != "create_customer" and not self.note:
             raise ValueError("transactions must include a note")
+        return self
+
+
+class QueryIntent(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    intent: Literal["customer_balance", "today_credit", "unpaid_since"]
+    person: str | None = None
+    days: int | None = Field(default=None, ge=1, le=365)
+
+    @model_validator(mode="after")
+    def validate_query(self):
+        if self.intent == "customer_balance" and not self.person:
+            raise ValueError("customer balance queries require a customer name")
+        if self.intent == "unpaid_since" and self.days is None:
+            raise ValueError("unpaid queries require a number of days")
         return self
 
 
@@ -161,6 +177,88 @@ def _normalize_person(name: str) -> str:
     return re.sub(r"\s*(?:ji|jee)\.?$", "", name, flags=re.IGNORECASE).strip()
 
 
+def _normalize_note(note: str, person: str, amount: float | None) -> str:
+    cleaned = " ".join(note.strip().split())
+    if not cleaned:
+        return ""
+    cleaned = re.sub(rf"(?<!\w){re.escape(person)}(?!\w)", " ", cleaned, flags=re.I)
+    note_amount, amount_tokens = _find_amount(cleaned)
+    if note_amount is not None:
+        for token in amount_tokens:
+            cleaned = re.sub(
+                rf"(?<!\w){re.escape(token)}(?!\w)",
+                " ",
+                cleaned,
+                count=1,
+                flags=re.I,
+            )
+    elif amount is not None:
+        cleaned = re.sub(rf"(?<!\w){re.escape(str(amount))}(?!\w)", " ", cleaned)
+    cleaned = re.sub(
+        r"\b(?:ko|la|ne|se|kadun|rupaye|rupya|rupees|rupee|ka|ki|ke|aaj|kal|today|"
+        r"yesterday|aur|ani|and|sirf)\b",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"[\s,.;:!?।]+", " ", cleaned).strip()[:80]
+
+
+def parse_query_intent(transcript: str) -> QueryIntent | None:
+    """Recognize supported ledger questions without sending them to the transaction parser."""
+    if not isinstance(transcript, str) or not transcript.strip():
+        return None
+    text = _normalize_rule_text(transcript.strip()).translate(
+        str.maketrans("०१२३४५६७८९", "0123456789")
+    )
+    lowered = re.sub(r"[?!।,.]+", " ", text.lower())
+    lowered = " ".join(lowered.split())
+
+    unpaid = re.search(
+        r"\b(?:kisne|kaun|who|किसने|कौन)\b.*?\b(\d{1,3})\s*(?:din|days|दिन)\b"
+        r".*?\b(?:nahi|nahin|nhi|not|नहीं)\b",
+        lowered,
+    )
+    if unpaid is None:
+        unpaid = re.search(
+            r"\b(\d{1,3})\s*(?:din|days|दिन)\b.*?"
+            r"\b(?:kisne|kaun|who|किसने|कौन)\b.*?\b(?:nahi|nahin|nhi|not|नहीं)\b",
+            lowered,
+        )
+    if unpaid:
+        days = int(unpaid.group(1))
+        if 1 <= days <= 365:
+            return QueryIntent(intent="unpaid_since", days=days)
+
+    today_words = ("aaj", "today", "आज")
+    credit_words = ("udhaar", "udhar", "credit", "उधार")
+    if (
+        any(word in lowered for word in today_words)
+        and any(word in lowered for word in credit_words)
+        and re.search(r"\b(?:kitna|kitni|how much|कितना|कितनी)\b", lowered)
+    ):
+        return QueryIntent(intent="today_credit")
+
+    balance = re.search(
+        r"(.+?)\s+(?:ka|ki|ke|का|की|के)\s+"
+        r"(?:(?:kitna|kitni|kitne|कितना|कितनी|कितने)\s+)?"
+        r"(?:baaki|baki|balance|bacha|बाकी|बकाया)\b",
+        lowered,
+    )
+    if balance is None:
+        balance = re.search(
+            r"(.+?)\s+(?:ka|ki|ke|का|की|के)\s+"
+            r"(?:kitna|kitni|kitne|कितना|कितनी|कितने)\b",
+            lowered,
+        )
+    if balance:
+        person = _normalize_person(balance.group(1))
+        person = re.sub(r"^(?:aur|and)\s+", "", person, flags=re.IGNORECASE)
+        if person and person.lower() not in {"mera", "apna", "my"}:
+            return QueryIntent(intent="customer_balance", person=person)
+    return None
+
+
 def _settings() -> tuple[str, str, float, Path]:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     model = os.getenv("PARSER_MODEL", "gemini-2.5-flash").strip()
@@ -185,20 +283,36 @@ def _default_provider() -> GeminiProvider:
     return GeminiProvider(api_key, model, timeout)
 
 
-def _cache_get(cache_path: Path, transcript_hash: str):
+def _ensure_cache_schema(connection: sqlite3.Connection) -> None:
+    exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'parser_cache'"
+    ).fetchone()
+    if exists:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(parser_cache)")
+        }
+        if "shop_id" not in columns:
+            connection.execute("DROP TABLE parser_cache")
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS parser_cache (
+            shop_id INTEGER NOT NULL,
+            transcript_hash TEXT NOT NULL,
+            response_json TEXT NOT NULL,
+            cached_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (shop_id, transcript_hash)
+        )"""
+    )
+
+
+def _cache_get(cache_path: Path, shop_id: int, transcript_hash: str):
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(cache_path, timeout=5) as connection:
-            connection.execute(
-                """CREATE TABLE IF NOT EXISTS parser_cache (
-                    transcript_hash TEXT PRIMARY KEY,
-                    response_json TEXT NOT NULL,
-                    cached_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )"""
-            )
+            _ensure_cache_schema(connection)
             row = connection.execute(
-                "SELECT response_json FROM parser_cache WHERE transcript_hash = ?",
-                (transcript_hash,),
+                """SELECT response_json FROM parser_cache
+                   WHERE shop_id = ? AND transcript_hash = ?""",
+                (shop_id, transcript_hash),
             ).fetchone()
         return json.loads(row[0]) if row else None
     except (OSError, sqlite3.Error, json.JSONDecodeError) as exc:
@@ -206,21 +320,20 @@ def _cache_get(cache_path: Path, transcript_hash: str):
         return None
 
 
-def _cache_put(cache_path: Path, transcript_hash: str, result: dict) -> None:
+def _cache_put(
+    cache_path: Path,
+    shop_id: int,
+    transcript_hash: str,
+    result: dict,
+) -> None:
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(cache_path, timeout=5) as connection:
+            _ensure_cache_schema(connection)
             connection.execute(
-                """CREATE TABLE IF NOT EXISTS parser_cache (
-                    transcript_hash TEXT PRIMARY KEY,
-                    response_json TEXT NOT NULL,
-                    cached_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )"""
-            )
-            connection.execute(
-                """INSERT OR REPLACE INTO parser_cache (transcript_hash, response_json)
-                   VALUES (?, ?)""",
-                (transcript_hash, json.dumps(result, ensure_ascii=False)),
+                """INSERT OR REPLACE INTO parser_cache
+                   (shop_id, transcript_hash, response_json) VALUES (?, ?, ?)""",
+                (shop_id, transcript_hash, json.dumps(result, ensure_ascii=False)),
             )
     except (OSError, sqlite3.Error) as exc:
         logging.warning("Could not write parser cache at %s: %s", cache_path, exc)
@@ -269,6 +382,7 @@ def parse_transactions(
     provider: ParserProvider | None = None,
     *,
     cache: bool = True,
+    shop_id: int = 0,
 ) -> ParsedTransactions:
     """Parse speech, retry the provider once, then use low-confidence local rules."""
     if not isinstance(transcript, str) or not transcript.strip():
@@ -280,7 +394,7 @@ def parse_transactions(
     ).expanduser()
     transcript_hash = _transcript_hash(text)
     if cache:
-        cached = _cache_get(cache_path, transcript_hash)
+        cached = _cache_get(cache_path, shop_id, transcript_hash)
         if cached:
             question = cached.get("clarification_question")
             if isinstance(question, str) and question.strip():
@@ -306,6 +420,7 @@ def parse_transactions(
         if cache:
             _cache_put(
                 cache_path,
+                shop_id,
                 transcript_hash,
                 {"clarification_question": exc.question},
             )
@@ -317,6 +432,7 @@ def parse_transactions(
     if cache:
         _cache_put(
             cache_path,
+            shop_id,
             transcript_hash,
             {
                 "transactions": list(result),
@@ -349,6 +465,18 @@ _DEVANAGARI_WORDS = {
     "दिये": "diye",
     "रुपये": "rupaye",
     "रुपए": "rupaye",
+    "कितना": "kitna",
+    "कितनी": "kitni",
+    "कितने": "kitne",
+    "बाकी": "baaki",
+    "बकाया": "bakaya",
+    "नहीं": "nahi",
+    "दिन": "din",
+    "किसने": "kisne",
+    "कौन": "kaun",
+    "का": "ka",
+    "की": "ki",
+    "के": "ke",
 }
 _NUMBER_VALUES = {
     "ek": 1,
@@ -419,7 +547,11 @@ _LEADING_TIME = re.compile(r"^(?:(?:aaj|kal|today|yesterday)\s+)+", re.IGNORECAS
 
 def _normalize_rule_text(text: str) -> str:
     for devanagari, latin in _DEVANAGARI_WORDS.items():
-        text = re.sub(re.escape(devanagari), latin, text)
+        text = re.sub(
+            rf"(?<!\w){re.escape(devanagari)}(?!\w)",
+            latin,
+            text,
+        )
     return text
 
 
@@ -528,12 +660,15 @@ def _rule_parse(transcript: str) -> ParseResult:
         for token in amount_tokens:
             note = re.sub(rf"(?<!\w){re.escape(token)}(?!\w)", "", note, count=1, flags=re.I)
         note = re.sub(
-            r"\b(?:ko|la|ne|se|kadun|rupaye|rupya|rupees|rupee|ka|ki|ke)\b",
+            r"\b(?:ko|la|ne|se|kadun|rupaye|rupya|rupees|rupee|ka|ki|ke|aaj|kal|today|"
+            r"yesterday|aur|ani|and|sirf)\b",
             " ",
             note,
             flags=re.IGNORECASE,
         )
+        note = re.sub(rf"(?<!\w){re.escape(person)}(?!\w)", " ", note, flags=re.I)
         note = " ".join(note.split())
+        note = note[:80].strip()
         transaction = Transaction(
             person=person,
             amount=amount,

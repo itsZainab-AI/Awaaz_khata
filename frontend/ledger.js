@@ -72,7 +72,12 @@ export function createTimelineEntry(entry) {
   heading.textContent = `${entry.type === 'credit_given' ? 'Credit' : 'Payment'} · ₹${Number(entry.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
   const note = document.createElement('span');
   note.textContent = entry.note || 'No note';
-  copy.append(heading, note);
+  const date = document.createElement('span');
+  const parsedDate = entry.created_at ? new Date(entry.created_at.replace(' ', 'T')) : null;
+  date.textContent = parsedDate && !Number.isNaN(parsedDate.valueOf())
+    ? parsedDate.toLocaleDateString()
+    : '';
+  copy.append(heading, note, date);
   item.append(copy);
   return item;
 }
