@@ -1,0 +1,19 @@
+{
+  "name": "Awaaz Khata",
+  "short_name": "Awaaz Khata",
+  "description": "A ledger you talk to, in your own language. Bolo, hisaab ho jayega.",
+  "lang": "en-IN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f0b1e",
+  "theme_color": "#0f0b1e",
+  "icons": [
+    {
+      "src": "/frontend/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

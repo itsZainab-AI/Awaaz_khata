@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f0b1e">
+    <link rel="manifest" href="/frontend/manifest.webmanifest">
+    <meta name="description" content="Awaaz Khata, a voice-led ledger for Indian shopkeepers." />
+    <title>Awaaz Khata</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="/frontend/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" async></script>
+    <script type="module" src="/frontend/app.js" defer></script>
+  </head>
+  <body data-theme="dark">
+    <div class="page-noise" aria-hidden="true"></div>
+    <div id="pointer-glow" aria-hidden="true"></div>
+    <div class="offline-banner" id="offline-banner" role="status" aria-live="polite" hidden>
+      You’re offline. The app shell is available; reconnect to update your khata.
+    </div>
+
+    <div class="splash-screen" id="splash-screen">
+      <div class="splash-mark-wrap" aria-hidden="true">
+        <svg viewBox="0 0 64 64" class="splash-mark" role="img" aria-label="Awaaz Khata logo">
+          <circle cx="32" cy="32" r="29"/>
+          <rect x="26" y="13" width="12" height="25" rx="6"/>
+          <path d="M19 30v3a13 13 0 0 0 26 0v-3M32 46v7m-8 0h16"/>
+        </svg>
+      </div>
+      <div class="splash-copy">
+        <p class="splash-kicker">Awaaz Khata</p>
+        <h1>Bolo, hisaab ho jayega</h1>
+      </div>
+    </div>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Awaaz Khata home">
+          <svg viewBox="0 0 64 64" class="brand-mark" aria-hidden="true">
+            <circle cx="32" cy="32" r="29"/>
+            <rect x="26" y="13" width="12" height="25" rx="6"/>
+            <path d="M19 30v3a13 13 0 0 0 26 0v-3M32 46v7m-8 0h16"/>
+          </svg>
+          <span>Awaaz Khata</span>
+        </a>
+
+        <select class="language-select" aria-label="Select language" id="language-toggle"></select>
+        <a class="settings-link" href="/settings">Settings</a>
+      </header>
+
+      <main class="main-stage">
+        <section class="hero-panel glass-card" id="hero-panel">
+          <div class="hero-copy">
+            <p class="eyebrow">A ledger you talk to, in your own language</p>
+            <h2>Udhaar shouldn’t get lost in a notebook.</h2>
+            <p class="hero-text">Small shops run on udhaar tracked in paper or memory. Speak in your language; Awaaz Khata keeps the hisaab clear. Bolo, hisaab ho jayega.</p>
+          </div>
+
+          <div class="mic-stage-wrap">
+            <div class="mic-stage" aria-live="polite">
+              <div class="pulse-ring pulse-ring-one"></div>
+              <div class="pulse-ring pulse-ring-two"></div>
+              <canvas id="mic-canvas" width="620" height="620" aria-hidden="true"></canvas>
+              <button id="mic-button" class="mic-button" type="button" aria-label="Hold to record">
+                <svg class="mic-icon" viewBox="0 0 48 48" aria-hidden="true">
+                  <rect x="18" y="5" width="12" height="25" rx="6"/>
+                  <path d="M11 22v3a13 13 0 0 0 26 0v-3M24 38v6m-8 0h16"/>
+                </svg>
+              </button>
+            </div>
+            <p class="mic-status" id="mic-status">Press & hold to record</p>
+          </div>
+
+          <aside class="summary-card glass-card" hidden>
+            <div class="summary-header">
+              <div>
+                <p class="eyebrow">Aaj ka hisaab</p>
+                <h3>Today’s summary</h3>
+              </div>
+              <span class="summary-pill">Live</span>
+            </div>
+            <div class="summary-stats" id="summary-stats" hidden>
+              <div>
+                <strong data-summary="credit">₹0</strong>
+                <span>Credit</span>
+              </div>
+              <div>
+                <strong data-summary="paid">₹0</strong>
+                <span>Paid</span>
+              </div>
+              <div>
+                <strong data-summary="customers">0</strong>
+                <span>Customers</span>
+              </div>
+            </div>
+            <div class="mini-chart" id="summary-chart" aria-hidden="true" hidden>
+              <span style="--i: 0.2"></span>
+              <span style="--i: 0.43"></span>
+              <span style="--i: 0.58"></span>
+              <span style="--i: 0.71"></span>
+              <span style="--i: 0.9"></span>
+              <span style="--i: 0.65"></span>
+              <span style="--i: 0.76"></span>
+            </div>
+          </aside>
+        </section>
+
+        <section class="content-grid">
+          <div class="transcript-panel glass-card" id="transcript-panel">
+            <div class="panel-header">
+              <p class="eyebrow">Transcript</p>
+              <span class="transcript-state" id="transcript-state" data-state="idle" aria-live="polite">Ready</span>
+            </div>
+            <div class="transcript-box" id="transcript-box">
+              <p id="transcript-text"></p>
+              <p id="transcript-original" class="transcript-original" hidden></p>
+              <p id="transcript-feedback" class="transcript-feedback" hidden></p>
+            </div>
+            <div class="confirmation-stack" id="confirmation-stack" aria-live="polite" hidden>
+              <div class="confirmation-card" id="entry-card-list"></div>
+              <div class="action-row" id="confirmation-actions">
+                <button type="button" class="ghost-btn" id="discard-button">Not now</button>
+                <button type="button" class="primary-btn" id="confirm-button">Save entry</button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="ledger-panel glass-card">
+            <div class="panel-header ledger-header">
+              <div>
+                <p class="eyebrow">Ledger</p>
+                <h3>Who owes what</h3>
+              </div>
+              <button type="button" class="icon-btn" id="refresh-ledger" aria-label="Refresh ledger">↻</button>
+            </div>
+            <div class="ledger-export-actions">
+              <button type="button" class="ghost-btn" data-export-ledger="csv">Download CSV</button>
+              <button type="button" class="ghost-btn" data-export-ledger="pdf">Download PDF</button>
+            </div>
+            <div id="ledger-list" class="ledger-list" aria-live="polite"></div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <div class="notice hidden" id="notice" role="status" aria-live="polite"></div>
+    <audio id="reply-audio" controls hidden></audio>
+    <script type="module" src="/frontend/pwa.js"></script>
+
+    <div class="customer-drawer" id="customer-drawer" aria-hidden="true">
+      <div class="drawer-backdrop" data-close="drawer"></div>
+      <div class="drawer-panel">
+        <div class="drawer-handle" aria-hidden="true"></div>
+        <div class="drawer-header">
+          <div class="drawer-title-wrap">
+            <div class="drawer-avatar" id="drawer-avatar">A</div>
+            <div>
+              <span class="eyebrow">Profile</span>
+              <h3 id="drawer-name">Customer</h3>
+            </div>
+          </div>
+          <button type="button" class="close-button" id="close-drawer" aria-label="Close customer details">×</button>
+        </div>
+        <div class="drawer-stats">
+          <div>
+            <span>Balance</span>
+            <strong id="drawer-balance">₹0</strong>
+          </div>
+          <div>
+            <span>Total entries</span>
+            <strong id="drawer-count">0</strong>
+          </div>
+        </div>
+        <div class="timeline" id="drawer-timeline"></div>
+        <div class="drawer-actions">
+          <button type="button" class="ghost-btn" data-export-customer="csv">Export CSV</button>
+          <button type="button" class="ghost-btn" data-export-customer="pdf">Export PDF</button>
+        </div>
+        <button type="button" class="primary-btn reminder-btn" id="send-reminder">
+          <span class="bubble-icon">✦</span>
+          Send reminder
+        </button>
+        <div class="reminder-chat" id="reminder-chat" hidden>
+          <div class="chat-head">WhatsApp reminder</div>
+          <div class="chat-bubble">
+            <span class="chat-play" aria-hidden="true">▶</span>
+            <p id="reminder-message">Hello, your balance is due.</p>
+          </div>
+          <div class="reminder-actions" id="reminder-actions"></div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
