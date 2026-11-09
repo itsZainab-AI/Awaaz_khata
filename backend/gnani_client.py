@@ -11,12 +11,23 @@ from backend.languages import LANGUAGES
 PRISMA_URL = "https://api.vachana.ai/stt/v3"
 TIMBRE_URL = "https://api.vachana.ai/api/v1/tts/inference"
 DEFAULT_LANGUAGE = "hi-IN"
+PRISMA_MODEL = "prisma-v3.0"
+AUTO_LANGUAGE = "indic-auto"
 TIMBRE_MODEL = "timbre-v2.5"
 TIMBRE_VOICE = "Nalini"
 
 
 class GnaniAPIError(RuntimeError):
     """Raised when a Gnani request cannot be completed successfully."""
+
+
+class TranscriptionResult(str):
+    """Transcript text with Prisma's detected language metadata."""
+
+    def __new__(cls, transcript, detected_language_code=None):
+        instance = super().__new__(cls, transcript)
+        instance.detected_language_code = detected_language_code
+        return instance
 
 
 def _audio_upload(audio_bytes):
@@ -83,7 +94,7 @@ def _post(url, *, headers, timeout, retry_transient=False, **kwargs):
 
 
 def transcribe(audio_bytes, language_hint=None):
-    """Transcribe audio bytes with Prisma; returns the transcript string."""
+    """Transcribe audio with Prisma v3.0 and preserve its detected language."""
     if not audio_bytes:
         raise ValueError("audio_bytes must not be empty.")
     language_code = language_hint or DEFAULT_LANGUAGE
@@ -95,7 +106,11 @@ def transcribe(audio_bytes, language_hint=None):
         headers={"X-API-Key-ID": _api_key()},
         timeout=_timeout(),
         files={"audio_file": _audio_upload(audio_bytes)},
-        data={"language_code": language_code, "format": "transcribe"},
+        data={
+            "model": PRISMA_MODEL,
+            "language_code": language_code,
+            "format": "transcribe",
+        },
     )
     try:
         result = response.json()
@@ -106,7 +121,10 @@ def transcribe(audio_bytes, language_hint=None):
     transcript = result.get("transcript") if result.get("success") else None
     if not isinstance(transcript, str):
         raise GnaniAPIError("Prisma response did not contain a successful transcript.")
-    return transcript
+    detected_language_code = result.get("detected_language_code")
+    if detected_language_code is not None and not isinstance(detected_language_code, str):
+        raise GnaniAPIError("Prisma returned an invalid detected language code.")
+    return TranscriptionResult(transcript, detected_language_code)
 
 
 def speak(text, language):

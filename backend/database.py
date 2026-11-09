@@ -1,8 +1,11 @@
 from contextlib import closing
+from difflib import SequenceMatcher
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
+import re
 import sqlite3
+from unidecode import unidecode
 
 
 SCHEMA = """
@@ -63,6 +66,72 @@ CREATE INDEX IF NOT EXISTS transactions_shop_customer
 CREATE UNIQUE INDEX IF NOT EXISTS one_demo_shop
     ON shops(is_demo) WHERE is_demo = 1;
 """
+
+_NAME_SUFFIXES = re.compile(r"(?:bhaiya|bhai|ben|jee|j+i+|j+e+)$", re.IGNORECASE)
+_NAME_SIMILARITY_THRESHOLD = 0.82
+
+
+def _normalized_name(name: str) -> str:
+    normalized = unidecode(name).casefold()
+    normalized = re.sub(r"[^a-z0-9]+", "", normalized)
+    normalized = _NAME_SUFFIXES.sub("", normalized)
+    return normalized
+
+
+def _name_similarity(first: str, second: str) -> float:
+    direct = SequenceMatcher(None, first, second).ratio()
+    first_skeleton = re.sub(r"(.)\1+", r"\1", re.sub(r"[aeiou]", "", first))
+    second_skeleton = re.sub(r"(.)\1+", r"\1", re.sub(r"[aeiou]", "", second))
+    if len(first_skeleton) < 3 or len(second_skeleton) < 3:
+        return direct
+    return max(
+        direct,
+        SequenceMatcher(None, first_skeleton, second_skeleton).ratio(),
+    )
+
+
+def _find_customer_match(connection, shop_id: int, name: str):
+    exact = connection.execute(
+        "SELECT id, name FROM customers WHERE shop_id = ? AND name = ? COLLATE NOCASE",
+        (shop_id, name),
+    ).fetchone()
+    if exact is not None:
+        return exact, True, 1.0
+
+    normalized = _normalized_name(name)
+    if len(normalized) < 4:
+        return None, False, 0.0
+
+    matches = []
+    for customer in connection.execute(
+        "SELECT id, name FROM customers WHERE shop_id = ?",
+        (shop_id,),
+    ).fetchall():
+        candidate = _normalized_name(customer["name"])
+        if len(candidate) < 4:
+            continue
+        score = _name_similarity(normalized, candidate)
+        if score >= _NAME_SIMILARITY_THRESHOLD:
+            matches.append((customer, score))
+
+    matches.sort(key=lambda item: item[1], reverse=True)
+    if not matches or (len(matches) > 1 and matches[0][1] - matches[1][1] < 0.08):
+        return None, False, 0.0
+    return matches[0][0], False, matches[0][1]
+
+
+def find_customer_match(database_path: Path, shop_id: int, name: str) -> dict | None:
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        customer, exact, similarity = _find_customer_match(connection, shop_id, name)
+    if customer is None:
+        return None
+    return {
+        "id": customer["id"],
+        "name": customer["name"],
+        "exact": exact,
+        "similarity": similarity,
+    }
 
 
 def initialize_database(
@@ -470,6 +539,9 @@ def get_all_transactions(database_path: Path, shop_id: int) -> list[dict]:
 def get_customer_balance(database_path: Path, shop_id: int, name: str) -> dict | None:
     with closing(sqlite3.connect(database_path)) as connection:
         connection.row_factory = sqlite3.Row
+        customer, _, _ = _find_customer_match(connection, shop_id, name)
+        if customer is None:
+            return None
         row = connection.execute(
             """
             SELECT customers.name,
@@ -483,10 +555,10 @@ def get_customer_balance(database_path: Path, shop_id: int, name: str) -> dict |
             LEFT JOIN transactions
                 ON transactions.customer_id = customers.id
                 AND transactions.shop_id = customers.shop_id
-            WHERE customers.shop_id = ? AND customers.name = ? COLLATE NOCASE
+            WHERE customers.shop_id = ? AND customers.id = ?
             GROUP BY customers.id, customers.name
             """,
-            (shop_id, name),
+            (shop_id, customer["id"]),
         ).fetchone()
     return dict(row) if row else None
 
@@ -543,6 +615,9 @@ def get_unpaid_customers(
 def get_customer(database_path: Path, shop_id: int, name: str) -> dict | None:
     with closing(sqlite3.connect(database_path)) as connection:
         connection.row_factory = sqlite3.Row
+        matched_customer, _, _ = _find_customer_match(connection, shop_id, name)
+        if matched_customer is None:
+            return None
         customer = connection.execute(
             """
             SELECT id, name, preferred_language, phone,
@@ -558,9 +633,9 @@ def get_customer(database_path: Path, shop_id: int, name: str) -> dict | None:
                         AND transactions.shop_id = customers.shop_id
                 ), 0) AS balance
             FROM customers
-            WHERE name = ? COLLATE NOCASE AND shop_id = ?
+            WHERE id = ? AND shop_id = ?
             """,
-            (name, shop_id),
+            (matched_customer["id"], shop_id),
         ).fetchone()
         if customer is None:
             return None
@@ -583,6 +658,7 @@ def confirm_transactions(
     edited_transactions: list[dict] | None = None,
 ) -> tuple[str, list[dict]] | None:
     with closing(sqlite3.connect(database_path)) as connection, connection:
+        connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("BEGIN IMMEDIATE")
         pending = connection.execute(
@@ -600,17 +676,21 @@ def confirm_transactions(
             edited_transactions if edited_transactions is not None else json.loads(pending[1])
         )
         for transaction in transactions:
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO customers (shop_id, name, preferred_language)
-                VALUES (?, ?, (SELECT language FROM shops WHERE id = ?))
-                """,
-                (shop_id, transaction["person"], shop_id),
-            )
-            customer = connection.execute(
-                "SELECT id FROM customers WHERE shop_id = ? AND name = ? COLLATE NOCASE",
-                (shop_id, transaction["person"]),
-            ).fetchone()
+            lookup_name = transaction.get("normalized_person") or transaction["person"]
+            customer, _, _ = _find_customer_match(connection, shop_id, lookup_name)
+            if customer is None:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO customers (shop_id, name, preferred_language)
+                    VALUES (?, ?, (SELECT language FROM shops WHERE id = ?))
+                    """,
+                    (shop_id, transaction["person"], shop_id),
+                )
+                customer, _, _ = _find_customer_match(
+                    connection,
+                    shop_id,
+                    transaction["person"],
+                )
             if customer is None:
                 raise RuntimeError("Could not find or create the transaction customer.")
             connection.execute(
@@ -620,7 +700,7 @@ def confirm_transactions(
                 """,
                 (
                     shop_id,
-                    customer[0],
+                    customer["id"],
                     transaction["amount"],
                     transaction["type"],
                     transaction["note"],
@@ -631,6 +711,49 @@ def confirm_transactions(
             (confirmation_id, shop_id),
         )
     return pending[0], transactions
+
+
+def save_transactions(
+    database_path: Path,
+    shop_id: int,
+    transactions: list[dict],
+) -> list[dict]:
+    with closing(sqlite3.connect(database_path)) as connection, connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        for transaction in transactions:
+            lookup_name = transaction.get("normalized_person") or transaction["person"]
+            customer, _, _ = _find_customer_match(connection, shop_id, lookup_name)
+            if customer is None:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO customers (shop_id, name, preferred_language)
+                    VALUES (?, ?, (SELECT language FROM shops WHERE id = ?))
+                    """,
+                    (shop_id, transaction["person"], shop_id),
+                )
+                customer, _, _ = _find_customer_match(
+                    connection,
+                    shop_id,
+                    transaction["person"],
+                )
+            if customer is None:
+                raise RuntimeError("Could not find or create the transaction customer.")
+            connection.execute(
+                """
+                INSERT INTO transactions (shop_id, customer_id, amount, type, note)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    shop_id,
+                    customer["id"],
+                    transaction["amount"],
+                    transaction["type"],
+                    transaction["note"],
+                ),
+            )
+    return transactions
 
 
 def cancel_confirmation(database_path: Path, shop_id: int, confirmation_id: str) -> bool:

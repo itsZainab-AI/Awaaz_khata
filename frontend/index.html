@@ -9,7 +9,7 @@
     <title>Awaaz Khata</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+Gujarati:wght@400;500;600;700&family=Noto+Sans+Gurmukhi:wght@400;500;600;700&family=Noto+Sans+Kannada:wght@400;500;600;700&family=Noto+Sans+Malayalam:wght@400;500;600;700&family=Noto+Sans+Tamil:wght@400;500;600;700&family=Noto+Sans+Telugu:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="/frontend/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" async></script>
     <script type="module" src="/frontend/app.js" defer></script>
@@ -46,7 +46,7 @@
           <span>Awaaz Khata</span>
         </a>
 
-        <select class="language-select" aria-label="Select language" id="language-toggle"></select>
+        <div class="language-toggle" role="group" aria-label="Select language" id="language-toggle"></div>
         <a class="settings-link" href="/settings">Settings</a>
       </header>
 
@@ -71,6 +71,16 @@
               </button>
             </div>
             <p class="mic-status" id="mic-status">Press & hold to record</p>
+            <div class="scan-action-wrap">
+              <button id="scan-button" class="scan-button secondary-btn" type="button" aria-label="Scan notebook" title="Scan notebook">
+                <svg class="camera-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                <span id="scan-button-label">Scan notebook</span>
+              </button>
+              <input type="file" id="scan-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/*" hidden />
+            </div>
           </div>
 
           <aside class="summary-card glass-card" hidden>
@@ -111,6 +121,7 @@
           <div class="transcript-panel glass-card" id="transcript-panel">
             <div class="panel-header">
               <p class="eyebrow">Transcript</p>
+              <span class="detected-language" id="detected-language" aria-live="polite" hidden></span>
               <span class="transcript-state" id="transcript-state" data-state="idle" aria-live="polite">Ready</span>
             </div>
             <div class="transcript-box" id="transcript-box">
@@ -189,6 +200,60 @@
             <p id="reminder-message">Hello, your balance is due.</p>
           </div>
           <div class="reminder-actions" id="reminder-actions"></div>
+        </div>
+      </div>
+    </div>
+    <div class="scan-modal" id="scan-modal" aria-hidden="true" hidden>
+      <div class="scan-backdrop" id="scan-backdrop"></div>
+      <div class="scan-dialog glass-card" role="dialog" aria-labelledby="scan-modal-title">
+        <div class="scan-modal-header">
+          <div class="scan-title-wrap">
+            <svg class="camera-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            <h3 id="scan-modal-title">Scan old notebook</h3>
+          </div>
+          <button type="button" class="close-button" id="scan-close-button" aria-label="Close">×</button>
+        </div>
+
+        <div class="scan-modal-body">
+          <div class="scan-preview-container" id="scan-preview-container">
+            <img id="scan-preview-image" class="scan-preview-image" alt="Notebook preview" />
+            <div class="scan-sweep-overlay" id="scan-sweep-overlay" hidden>
+              <div class="scan-sweep-bar"></div>
+              <p class="scan-status-text" id="scan-status-text">Scanning notebook...</p>
+            </div>
+          </div>
+
+          <div class="scan-safety-note" id="scan-safety-note">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span id="scan-safety-text">Check names and amounts before adding.</span>
+          </div>
+
+          <div class="scan-table-wrap" id="scan-table-wrap" hidden>
+            <table class="scan-review-table" id="scan-review-table">
+              <thead>
+                <tr>
+                  <th class="col-check"><input type="checkbox" id="scan-select-all" checked aria-label="Select all" /></th>
+                  <th id="th-person">Customer</th>
+                  <th id="th-amount">Amount (₹)</th>
+                  <th id="th-type">Type</th>
+                  <th id="th-note">Note</th>
+                </tr>
+              </thead>
+              <tbody id="scan-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="scan-actions" id="scan-actions">
+          <button type="button" class="ghost-btn" id="scan-cancel-button">Cancel</button>
+          <button type="button" class="primary-btn" id="scan-confirm-button" disabled>Add all selected</button>
         </div>
       </div>
     </div>

@@ -1,17 +1,20 @@
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
+from contextlib import closing
 from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from unidecode import unidecode
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +37,7 @@ class Transaction(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     person: str = Field(min_length=1)
+    normalized_person: str | None = Field(default=None, min_length=1)
     amount: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     type: Literal["credit_given", "payment_received", "create_customer"]
     note: str = Field(default="", max_length=80)
@@ -41,6 +45,8 @@ class Transaction(BaseModel):
     @model_validator(mode="after")
     def normalize_fields(self):
         self.person = _normalize_person(self.person)
+        if self.normalized_person is not None:
+            self.normalized_person = _normalize_person(self.normalized_person)
         self.note = _normalize_note(self.note, self.person, self.amount)
         if not self.person:
             raise ValueError("person must contain a name")
@@ -67,6 +73,43 @@ class QueryIntent(BaseModel):
         if self.intent == "unpaid_since" and self.days is None:
             raise ValueError("unpaid queries require a number of days")
         return self
+
+
+class QueryClassification(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    intent: Literal["customer_balance", "today_credit", "unpaid_since", "not_query"]
+    person: str | None = None
+    days: int | None = Field(default=None, ge=1, le=365)
+
+
+class ScanRow(BaseModel):
+    # Use extra="ignore" and no strict=True so Pydantic does NOT emit
+    # "additionalProperties": false in the JSON schema — Gemini rejects that field.
+    model_config = ConfigDict(extra="ignore")
+
+    person: str = ""
+    amount: float
+    type: Literal["credit_given", "payment_received"] = "credit_given"
+    note: str = ""
+    date: str | None = None
+    confidence: Literal["low", "medium", "high"] = "high"
+
+    @model_validator(mode="after")
+    def validate_row(self):
+        self.person = _normalize_person(self.person)
+        if not math.isfinite(self.amount) or self.amount <= 0:
+            raise ValueError("amount must be greater than zero")
+        if not self.note:
+            self.note = "Notebook entry"
+        return self
+
+
+class ScanResult(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    rows: list[ScanRow]
+    raw_response: str | None = Field(default=None, exclude=True)
 
 
 class ParseResult(BaseModel):
@@ -129,12 +172,20 @@ class GeminiProvider(ParserProvider):
             http_options=types.HttpOptions(timeout=int(timeout_seconds * 1000)),
         )
         self._model = model
+        self.last_raw_response: str | None = None
 
     def parse(self, transcript: str) -> ParseResult:
         prompt = (
-            "Parse shopkeeper ledger speech in the speaker's language, including "
-            "Indian languages and natural code-switching. "
+            "Parse shopkeeper ledger speech in Hinglish, Hindi, Marathi, Tamil, "
+            "Telugu, Gujarati, Bengali, Kannada, Malayalam, Punjabi or English, "
+            "including natural code-switching. "
             "Return every distinct completed transaction in speech order. "
+            "Customer names may have grammatical case suffixes attached; these "
+            "suffixes are not part of the name and must be stripped. Marathi "
+            "examples include ला, ने, कडून, चा, ची; Hindi includes को, ने, से; "
+            "Tamil includes க்கு/உக்கு; Telugu includes కు/కి/నుంచి; likewise "
+            "strip equivalent case endings in Gujarati, Bengali, Kannada, "
+            "Malayalam and Punjabi. For example, रमेशला means person रमेश. "
             "credit_given means the shopkeeper gave goods or money on credit "
             "and the named person owes the shopkeeper. payment_received means "
             "the person paid or returned money to the shopkeeper. Convert spoken "
@@ -143,19 +194,38 @@ class GeminiProvider(ParserProvider):
             "and an empty note. This is not a financial transaction. "
             "amounts to numeric rupees (paanch sau=500, dedh hazaar=1500, "
             "sava hazaar=1250, ek lakh=100000, ek crore=10000000). Remove "
-            "honorifics such as ji/jee from names. Give each financial transaction "
+            "honorifics such as ji/jee from names. Preserve each customer name in "
+            "the original script in person and include a Romanized normalized_person "
+            "for matching. Give each financial transaction "
             "a short contextual note. Never infer a missing person, amount, or direction. "
+            "Few-shot examples (each is one completed transaction): "
+            "Hinglish: 'Ramesh ko 500 udhaar diya' -> person Ramesh, amount 500, "
+            "credit_given. Hindi: 'रमेश को पाँच सौ उधार दिए' -> person रमेश, "
+            "amount 500, credit_given. Marathi: 'रमेशला 500 रुपये उधार दिले' "
+            "-> person रमेश, amount 500, credit_given; 'रमेशने 300 रुपये परत "
+            "दिले' -> person रमेश, amount 300, payment_received. Tamil: "
+            "'ரமேஷுக்கு 500 ரூபாய் கடனாக கொடுத்தேன்' -> person ரமேஷ், "
+            "credit_given. Telugu: 'రమేష్‌కు 500 రూపాయలు అప్పుగా ఇచ్చాను' "
+            "-> person రమేష్, credit_given. Gujarati: 'રમેશને 500 રૂપિયા "
+            "ઉધાર આપ્યા' -> person રમેશ, credit_given. Bengali: "
+            "'রাকেশকে 500 টাকা ধার দিলাম' -> person রাকেশ, credit_given. "
+            "Kannada: 'ರಮೇಶ್‌ಗೆ 500 ರೂಪಾಯಿ ಸಾಲವಾಗಿ ಕೊಟ್ಟೆ' -> person ರಮೇಶ್, "
+            "credit_given. Malayalam: 'രമേശിന് 500 രൂപ കടമായി കൊടുത്തു' "
+            "-> person രമേശ്, credit_given. Punjabi: 'ਰਮੇਸ਼ ਨੂੰ 500 ਰੁਪਏ "
+            "ਉਧਾਰ ਦਿੱਤੇ' -> person ਰਮੇਸ਼, credit_given. English: 'I gave "
+            "Ramesh 500 rupees on credit' -> person Ramesh, credit_given. "
             "If required details are unclear or there is no completed transaction, "
             "return no transactions and ask one short clarification question in "
             "the speaker's language."
         )
+        self.last_raw_response = None
         try:
             response = self._client.models.generate_content(
                 model=self._model,
                 contents=f"{prompt}\n\nTranscript: {transcript}",
                 config=self._types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_schema=ParseResult,
+                    response_schema=_gemini_transaction_schema(),
                     temperature=0,
                 ),
             )
@@ -168,14 +238,183 @@ class GeminiProvider(ParserProvider):
         try:
             if not response.text:
                 raise ValueError("Gemini returned an empty response")
+            self.last_raw_response = response.text
             return ParseResult.model_validate_json(response.text)
         except (ValueError, ValidationError) as exc:
             raise ParserError(f"Gemini returned invalid parser JSON: {exc}") from exc
 
+    def parse_query(self, transcript: str) -> QueryIntent | None:
+        prompt = (
+            "Classify shopkeeper ledger speech in Hinglish, Hindi, Marathi, Tamil, "
+            "Telugu, Gujarati, Bengali, Kannada, Malayalam, Punjabi or English. "
+            "Return customer_balance with the customer's name in its original "
+            "script, today_credit, unpaid_since with the number of days, or "
+            "not_query if this is not a ledger question. Do not infer missing "
+            "details. Return JSON matching the supplied schema."
+        )
+        try:
+            response = self._client.models.generate_content(
+                model=self._model,
+                contents=f"{prompt}\n\nTranscript: {transcript}",
+                config=self._types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=QueryClassification,
+                    temperature=0,
+                ),
+            )
+            if not response.text:
+                raise ValueError("Gemini returned an empty query response")
+            classification = QueryClassification.model_validate_json(response.text)
+        except (ValueError, ValidationError) as exc:
+            raise ParserError(f"Gemini returned invalid query JSON: {exc}") from exc
+        except Exception as exc:
+            raise ParserError(f"Gemini query request failed: {exc}") from exc
+
+        if classification.intent == "not_query":
+            return None
+        try:
+            return QueryIntent(
+                intent=classification.intent,
+                person=classification.person,
+                days=classification.days,
+            )
+        except ValidationError as exc:
+            raise ParserError(f"Gemini returned an incomplete query: {exc}") from exc
+
+    def scan_notebook(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> ScanResult:
+        if not image_bytes:
+            raise ParserError("Notebook image is empty.")
+
+        prompt = (
+            "You are reading a photo of a handwritten udhaar/khata (ledger) notebook page. "
+            "The page may be in Hindi, Marathi, Gujarati, English, or a mix of these languages. "
+            "It typically has a table with columns like: Name, Amount (₹), Type (Udhar/Jama/Received/Given/Credit), "
+            "Date, Notes/Item description, and optionally Status (Pending/Cleared). "
+            "TASK: Extract EVERY data row from the table as a JSON object. "
+            "Rules: "
+            "1. 'Udhar' / 'Given' / 'credit' / 'udhaar' means money was given out → use type 'credit_given'. "
+            "2. 'Jama' / 'Received' / 'payment' means money was received → use type 'payment_received'. "
+            "3. Never invent names or amounts — only use what is clearly written. "
+            "4. Convert Devanagari/native digits (०१२३...) to Arabic numerals. "
+            "5. Keep names exactly as written (Hindi/English/mixed is fine). "
+            "6. If a row is hard to read, still include it with confidence 'low'. "
+            "7. For the date field, use the written date string (e.g. '09/11/2026') or null if absent. "
+            "8. For the note field, use the Notes/item description column value. "
+            "9. Ignore summary rows like 'Total Udhar', 'Total Jama', page headers, and footer text. "
+            "Return a JSON object with a 'rows' array. Each element must have: "
+            "person (string), amount (number > 0), type ('credit_given' or 'payment_received'), "
+            "note (string), date (string or null), confidence ('low', 'medium', or 'high')."
+        )
+
+        # Use a plain dict schema to avoid Pydantic emitting "additionalProperties":false
+        # which Gemini's API rejects with INVALID_ARGUMENT.
+        schema = {
+            "type": "OBJECT",
+            "properties": {
+                "rows": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "person": {"type": "STRING"},
+                            "amount": {"type": "NUMBER"},
+                            "type": {
+                                "type": "STRING",
+                                "enum": ["credit_given", "payment_received"],
+                            },
+                            "note": {"type": "STRING"},
+                            "date": {"type": "STRING", "nullable": True},
+                            "confidence": {
+                                "type": "STRING",
+                                "enum": ["low", "medium", "high"],
+                            },
+                        },
+                        "required": ["person", "amount", "type", "note", "confidence"],
+                    },
+                }
+            },
+            "required": ["rows"],
+        }
+
+        try:
+            response = self._client.models.generate_content(
+                model=self._model,
+                contents=[
+                    prompt,
+                    self._types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                ],
+                config=self._types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                    temperature=0,
+                ),
+            )
+        except (TimeoutError, OSError) as exc:
+            raise ParserError(f"Gemini request failed: {exc}") from exc
+        except Exception as exc:
+            raise ParserError(f"Gemini request failed: {exc}") from exc
+
+        try:
+            if not response.text:
+                raise ValueError("Gemini returned an empty response")
+            raw = json.loads(response.text)
+            if not isinstance(raw, dict) or not isinstance(raw.get("rows"), list):
+                raise ValueError("Gemini response must contain a rows array")
+            valid_rows = []
+            for item in raw.get("rows", []):
+                if not isinstance(item, dict):
+                    raise ValueError("Gemini returned a row that was not an object")
+                if item.get("amount") is None:
+                    continue
+                valid_rows.append(ScanRow(**item))
+            return ScanResult(rows=valid_rows, raw_response=response.text)
+        except (ValueError, ValidationError) as exc:
+            logging.info("Gemini notebook scan response: %s", response.text)
+            raise ParserError(f"Gemini returned invalid scan JSON: {exc}") from exc
+
+
+def _gemini_transaction_schema() -> dict:
+    return {
+        "type": "OBJECT",
+        "properties": {
+            "transactions": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "person": {"type": "STRING"},
+                        "normalized_person": {"type": "STRING", "nullable": True},
+                        "amount": {"type": "NUMBER", "nullable": True},
+                        "type": {
+                            "type": "STRING",
+                            "enum": ["credit_given", "payment_received", "create_customer"],
+                        },
+                        "note": {"type": "STRING"},
+                    },
+                    "required": ["person", "amount", "type", "note"],
+                },
+            },
+            "clarification_question": {"type": "STRING", "nullable": True},
+        },
+        "required": ["transactions", "clarification_question"],
+    }
+
 
 def _normalize_person(name: str) -> str:
     name = " ".join(name.strip().split()).rstrip(".,!?।")
-    return re.sub(r"\s*(?:ji|jee)\.?$", "", name, flags=re.IGNORECASE).strip()
+    name = re.sub(r"\s*(?:ji|jee)\.?$", "", name, flags=re.IGNORECASE).strip()
+    name = re.sub(
+        r"\s*(?:कडून|च्या|चे|ची|चा|ला|ने|को|से)$",
+        "",
+        name,
+    )
+    name = re.sub(
+        r"\s*(?:kadun|la|ne|ko|se)$",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
+    return name.strip()
 
 
 def _normalize_note(note: str, person: str, amount: float | None) -> str:
@@ -206,7 +445,7 @@ def _normalize_note(note: str, person: str, amount: float | None) -> str:
 
 
 def parse_query_intent(transcript: str) -> QueryIntent | None:
-    """Recognize supported ledger questions without sending them to the transaction parser."""
+    """Recognize Hindi, Marathi, and Hinglish ledger questions locally."""
     if not isinstance(transcript, str) or not transcript.strip():
         return None
     text = _normalize_rule_text(transcript.strip()).translate(
@@ -216,14 +455,14 @@ def parse_query_intent(transcript: str) -> QueryIntent | None:
     lowered = " ".join(lowered.split())
 
     unpaid = re.search(
-        r"\b(?:kisne|kaun|who|किसने|कौन)\b.*?\b(\d{1,3})\s*(?:din|days|दिन)\b"
+        r"\b(?:kisne|kaun|किसने|कौन)\b.*?\b(\d{1,3})\s*(?:din|दिन)\b"
         r".*?\b(?:nahi|nahin|nhi|not|नहीं)\b",
         lowered,
     )
     if unpaid is None:
         unpaid = re.search(
-            r"\b(\d{1,3})\s*(?:din|days|दिन)\b.*?"
-            r"\b(?:kisne|kaun|who|किसने|कौन)\b.*?\b(?:nahi|nahin|nhi|not|नहीं)\b",
+            r"\b(\d{1,3})\s*(?:din|दिन)\b.*?"
+            r"\b(?:kisne|kaun|किसने|कौन)\b.*?\b(?:nahi|nahin|nhi|not|नहीं)\b",
             lowered,
         )
     if unpaid:
@@ -231,12 +470,12 @@ def parse_query_intent(transcript: str) -> QueryIntent | None:
         if 1 <= days <= 365:
             return QueryIntent(intent="unpaid_since", days=days)
 
-    today_words = ("aaj", "today", "आज")
-    credit_words = ("udhaar", "udhar", "credit", "उधार")
+    today_words = ("aaj", "आज")
+    credit_words = ("udhaar", "udhar", "उधार")
     if (
         any(word in lowered for word in today_words)
         and any(word in lowered for word in credit_words)
-        and re.search(r"\b(?:kitna|kitni|how much|कितना|कितनी)\b", lowered)
+        and re.search(r"\b(?:kitna|kitni|कितना|कितनी)\b", lowered)
     ):
         return QueryIntent(intent="today_credit")
 
@@ -284,6 +523,46 @@ def _default_provider() -> GeminiProvider:
     return GeminiProvider(api_key, model, timeout)
 
 
+def scan_notebook_image(
+    image_bytes: bytes,
+    mime_type: str = "image/jpeg",
+    provider: GeminiProvider | None = None,
+) -> ScanResult:
+    if provider is None:
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        model = os.getenv("SCAN_MODEL", "gemini-3-flash-preview").strip()
+        if not api_key:
+            raise ParserError("GEMINI_API_KEY is not set in .env.")
+        if not model:
+            raise ParserError("SCAN_MODEL must not be empty.")
+        active_provider = GeminiProvider(api_key, model, 60)
+    else:
+        active_provider = provider
+    return active_provider.scan_notebook(image_bytes, mime_type=mime_type)
+
+
+def parse_query_intent_for_language(
+    transcript: str,
+    language: str,
+) -> QueryIntent | None:
+    """Use local rules only for Hindi/Marathi/Hinglish; classify other languages with Gemini."""
+    if language in {"hi-en", "hi-IN", "mr-IN"}:
+        return parse_query_intent(transcript)
+    if not isinstance(transcript, str) or not transcript.strip():
+        return None
+
+    provider = _default_provider()
+    last_error = None
+    for attempt in range(2):
+        try:
+            return provider.parse_query(transcript.strip())
+        except ParserError as exc:
+            last_error = exc
+            if attempt == 0:
+                time.sleep(0.2)
+    raise ParserError(f"Gemini query parser failed after two attempts: {last_error}") from last_error
+
+
 def _ensure_cache_schema(connection: sqlite3.Connection) -> None:
     exists = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'parser_cache'"
@@ -308,7 +587,7 @@ def _ensure_cache_schema(connection: sqlite3.Connection) -> None:
 def _cache_get(cache_path: Path, shop_id: int, transcript_hash: str):
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(cache_path, timeout=5) as connection:
+        with closing(sqlite3.connect(cache_path, timeout=5)) as connection, connection:
             _ensure_cache_schema(connection)
             row = connection.execute(
                 """SELECT response_json FROM parser_cache
@@ -329,7 +608,7 @@ def _cache_put(
 ) -> None:
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(cache_path, timeout=5) as connection:
+        with closing(sqlite3.connect(cache_path, timeout=5)) as connection, connection:
             _ensure_cache_schema(connection)
             connection.execute(
                 """INSERT OR REPLACE INTO parser_cache
@@ -340,8 +619,9 @@ def _cache_put(
         logging.warning("Could not write parser cache at %s: %s", cache_path, exc)
 
 
-def _transcript_hash(transcript: str) -> str:
-    return hashlib.sha256(transcript.strip().encode("utf-8")).hexdigest()
+def _transcript_hash(transcript: str, language: str = "") -> str:
+    cache_key = f"{language}\0{transcript.strip()}"
+    return hashlib.sha256(cache_key.encode("utf-8")).hexdigest()
 
 
 def _as_transactions(
@@ -352,7 +632,10 @@ def _as_transactions(
     if result.clarification_question:
         raise ParserClarification(result.clarification_question.strip())
     return ParsedTransactions(
-        [transaction.model_dump(mode="json") for transaction in result.transactions],
+        [
+            transaction.model_dump(mode="json", exclude_none=True)
+            for transaction in result.transactions
+        ],
         low_confidence=low_confidence,
     )
 
@@ -384,6 +667,7 @@ def parse_transactions(
     *,
     cache: bool = True,
     shop_id: int = 0,
+    language: str = "hi-en",
 ) -> ParsedTransactions:
     """Parse speech, retry the provider once, then use low-confidence local rules."""
     if not isinstance(transcript, str) or not transcript.strip():
@@ -393,7 +677,7 @@ def parse_transactions(
     cache_path = Path(
         os.getenv("PARSER_CACHE_PATH", str(ROOT / ".cache" / "parser.sqlite3"))
     ).expanduser()
-    transcript_hash = _transcript_hash(text)
+    transcript_hash = _transcript_hash(text, language)
     if cache:
         cached = _cache_get(cache_path, shop_id, transcript_hash)
         if cached:
@@ -427,6 +711,11 @@ def parse_transactions(
             )
         raise
     except ParserError as exc:
+        if language not in {"hi-en", "hi-IN", "mr-IN"}:
+            raise ParserError(
+                f"Gemini could not parse this {language} transcript; local fallback "
+                "supports only Hinglish, Hindi, and Marathi."
+            ) from exc
         logging.warning("Gemini parser unavailable; using the rule-based parser: %s", exc)
         result = parse_fallback(text)
 
@@ -464,6 +753,17 @@ _DEVANAGARI_WORDS = {
     "दिए": "diye",
     "दिया": "diya",
     "दिये": "diye",
+    "दिले": "dile",
+    "परत": "parat",
+    "जमा": "jama",
+    "केले": "kele",
+    "वापस": "wapas",
+    "मिला": "mila",
+    "मिले": "mila",
+    "लिए": "liye",
+    "पाचशे": "panchshe",
+    "पाच": "paanch",
+    "दीड": "dedh",
     "रुपये": "rupaye",
     "रुपए": "rupaye",
     "कितना": "kitna",
@@ -511,8 +811,12 @@ _NUMBER_VALUES = {
     "बीस": 20,
     "pachas": 50,
     "पचास": 50,
+    "पाच": 5,
+    "पाचशे": 500,
+    "पंचशे": 500,
     "dedh": 1.5,
     "डेढ़": 1.5,
+    "दीड": 1.5,
     "sava": 1.25,
     "sawa": 1.25,
     "सवा": 1.25,
@@ -539,17 +843,26 @@ _CREDIT_MARKERS = re.compile(
     r"\b(?:udhaar|udhar|credit)\b|\b(?:udhaar|udhar)\s+par\b", re.IGNORECASE
 )
 _PAYMENT_MARKERS = re.compile(
-    r"\b(?:wapas|parat|chukaya|chukav|jama|vasool|mila|aale|received|payment)\b",
+    r"\b(?:wapas|parat|chukaya|chukav|jama|vasool|mila|aale|received|payment)\b"
+    r"|(?:मिळाले|घेतले|घेतलं)",
     re.IGNORECASE,
 )
-_TOKEN_PATTERN = re.compile(r"\d+(?:[.,]\d+)?|[^\W\d_]+", re.UNICODE)
+_MARATHI_GIVING_VERBS = re.compile(
+    r"(?:दिले|दिलं|दिला|दिली|dile|dila)",
+    re.IGNORECASE,
+)
+_TOKEN_PATTERN = re.compile(
+    r"\d+(?:[.,]\d+)?|(?:[^\W\d_]|[\u0900-\u097F])+",
+    re.UNICODE,
+)
 _LEADING_TIME = re.compile(r"^(?:(?:aaj|kal|today|yesterday)\s+)+", re.IGNORECASE)
 
 
 def _normalize_rule_text(text: str) -> str:
+    text = text.translate(str.maketrans("०१२३४५६७८९", "0123456789"))
     for devanagari, latin in _DEVANAGARI_WORDS.items():
         text = re.sub(
-            rf"(?<!\w){re.escape(devanagari)}(?!\w)",
+            rf"(?<![\w\u0900-\u097F]){re.escape(devanagari)}(?![\w\u0900-\u097F])",
             latin,
             text,
         )
@@ -595,6 +908,17 @@ def _find_amount(text: str) -> tuple[float | None, list[str]]:
 
 
 def _extract_person(clause: str) -> str | None:
+    attached_suffix = re.search(
+        r"([^\s\d]+?)(?:कडून|ला|ने|चा|ची|चे|च्या|को|से)(?=\s|[0-9])",
+        clause,
+    )
+    if attached_suffix:
+        person = _LEADING_TIME.sub("", attached_suffix.group(1).strip())
+        person = re.sub(r"^(?:aur|ani|and)\s+", "", person, flags=re.IGNORECASE)
+        person = _normalize_person(person)
+        if person:
+            return person
+
     patterns = (
         r"(.+?)\s+(?:ko|la)\b",
         r"(.+?)\s+(?:ne|se|kadun)\b",
@@ -637,13 +961,27 @@ def _rule_parse(transcript: str) -> ParseResult:
     previous_person = None
 
     for clause in clauses:
-        credit = bool(_CREDIT_MARKERS.search(clause)) and bool(
-            re.search(r"\b(?:diya|diye|dile|dila)\b", clause, re.IGNORECASE)
+        marathi_giving = bool(_MARATHI_GIVING_VERBS.search(clause))
+        attached_recipient = bool(
+            re.search(r"(?:ला)(?=\s|[0-9])", clause)
         )
+        attached_payer = bool(
+            re.search(r"(?:ने|कडून)(?=\s|[0-9])", clause)
+        )
+        marathi_payment = bool(
+            re.search(
+                r"(?:parat\s+dile|jama\s+kele|मिळाले|घेतले|घेतलं)",
+                clause,
+            )
+        )
+        credit = (
+            bool(_CREDIT_MARKERS.search(clause))
+            and bool(re.search(r"\b(?:diya|diye|dile|dila)\b", clause, re.IGNORECASE))
+        ) or (attached_recipient and marathi_giving and not marathi_payment)
         payment = bool(_PAYMENT_MARKERS.search(clause)) or (
             not credit
             and bool(re.search(r"\bne\b.*\b(?:diya|diye)\b", clause, re.IGNORECASE))
-        )
+        ) or (attached_payer and marathi_giving) or marathi_payment
         if not credit and not payment:
             continue
 
@@ -661,8 +999,13 @@ def _rule_parse(transcript: str) -> ParseResult:
         for token in amount_tokens:
             note = re.sub(rf"(?<!\w){re.escape(token)}(?!\w)", "", note, count=1, flags=re.I)
         note = re.sub(
+            rf"{re.escape(person)}(?:कडून|ला|ने|चा|ची|चे|च्या|को|से)?",
+            " ",
+            note,
+        )
+        note = re.sub(
             r"\b(?:ko|la|ne|se|kadun|rupaye|rupya|rupees|rupee|ka|ki|ke|aaj|kal|today|"
-            r"yesterday|aur|ani|and|sirf)\b",
+            r"yesterday|aur|ani|and|sirf)\b|(?:रुपये|रुपए|ला|ने|कडून|चा|ची|चे|च्या|को|से)",
             " ",
             note,
             flags=re.IGNORECASE,

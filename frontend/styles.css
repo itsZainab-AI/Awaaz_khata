@@ -35,8 +35,51 @@ body {
     radial-gradient(circle at 80% 10%, rgba(255, 79, 163, 0.16), transparent 22%),
     linear-gradient(135deg, var(--bg) 0%, var(--bg-2) 46%, #100d1a 100%);
   color: var(--text);
-  font-family: "Outfit", "Noto Sans Devanagari", sans-serif;
+  font-family:
+    "Outfit",
+    "Noto Sans Devanagari",
+    "Noto Sans Tamil",
+    "Noto Sans Telugu",
+    "Noto Sans Gujarati",
+    "Noto Sans Bengali",
+    "Noto Sans Kannada",
+    "Noto Sans Malayalam",
+    "Noto Sans Gurmukhi",
+    sans-serif;
   text-rendering: optimizeLegibility;
+}
+
+:lang(hi),
+:lang(mr) {
+  font-family: "Noto Sans Devanagari", "Outfit", sans-serif;
+}
+
+:lang(ta) {
+  font-family: "Noto Sans Tamil", "Outfit", sans-serif;
+}
+
+:lang(te) {
+  font-family: "Noto Sans Telugu", "Outfit", sans-serif;
+}
+
+:lang(gu) {
+  font-family: "Noto Sans Gujarati", "Outfit", sans-serif;
+}
+
+:lang(bn) {
+  font-family: "Noto Sans Bengali", "Outfit", sans-serif;
+}
+
+:lang(kn) {
+  font-family: "Noto Sans Kannada", "Outfit", sans-serif;
+}
+
+:lang(ml) {
+  font-family: "Noto Sans Malayalam", "Outfit", sans-serif;
+}
+
+:lang(pa) {
+  font-family: "Noto Sans Gurmukhi", "Outfit", sans-serif;
 }
 
 .splash-screen {
@@ -177,20 +220,46 @@ svg {
   filter: drop-shadow(0 0 16px rgba(255, 153, 51, 0.55));
 }
 
-.language-select {
-  min-width: 190px;
-  padding: 9px 34px 9px 12px;
+.language-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(720px, 100%);
+  overflow-x: auto;
+  padding: 7px;
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 999px;
   background: rgba(255,255,255,0.03);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-  color: var(--text);
-  font-size: 0.82rem;
-  font-weight: 600;
+  scrollbar-width: none;
 }
 
-.language-select option {
+.language-toggle::-webkit-scrollbar {
+  display: none;
+}
+
+.language-toggle button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(247, 239, 232, 0.72);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.language-toggle button.active {
+  background: linear-gradient(135deg, var(--accent), #ffa94d);
   color: #201514;
+  box-shadow: 0 10px 22px rgba(255, 153, 51, 0.32);
+}
+
+.language-toggle button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 
 .main-stage {
@@ -445,8 +514,20 @@ svg {
 
 .panel-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.detected-language {
+  margin-left: auto;
+  padding: 5px 9px;
+  border: 1px solid rgba(107, 214, 168, 0.4);
+  border-radius: 999px;
+  color: #b7f0d6;
+  font-size: 0.7rem;
+  font-weight: 700;
 }
 
 .transcript-state {
@@ -588,11 +669,18 @@ svg {
 
 .entry-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   color: rgba(217, 204, 191, 0.75);
   font-size: 0.82rem;
+}
+
+.entry-match-suggestion {
+  flex-basis: 100%;
+  color: var(--gold);
+  line-height: 1.5;
 }
 
 .entry-actions {
@@ -1085,8 +1173,9 @@ svg {
     flex-direction: column;
   }
 
-  .language-select {
+  .language-toggle {
     width: 100%;
+    max-width: 100%;
   }
 
   .hero-panel {
@@ -1261,7 +1350,7 @@ svg {
 }
 
 .mic-button:focus-visible,
-.language-select:focus-visible,
+.language-toggle button:focus-visible,
 .primary-btn:focus-visible,
 .ghost-btn:focus-visible,
 .icon-btn:focus-visible,
@@ -2023,7 +2112,7 @@ svg {
     grid-template-columns: 1fr auto;
   }
 
-  .topbar .language-select {
+  .topbar .language-toggle {
     grid-column: 1 / -1;
     grid-row: 2;
   }
@@ -2051,5 +2140,338 @@ svg {
 
   .drawer-panel .timeline {
     max-height: min(34vh, 280px);
+  }
+}
+
+/* Scan Old Notebook Styles */
+.scan-action-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.scan-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--text-primary, #ffffff);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.scan-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 153, 51, 0.5);
+  box-shadow: 0 4px 16px rgba(255, 153, 51, 0.2);
+  transform: translateY(-1px);
+}
+
+.scan-button .camera-icon {
+  stroke: var(--accent, #ff9933);
+}
+
+.scan-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.scan-modal[hidden] {
+  display: none !important;
+}
+
+.scan-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.scan-dialog {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #181920;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
+}
+
+.scan-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.scan-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.scan-title-wrap h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.scan-title-wrap .camera-icon {
+  stroke: var(--accent, #ff9933);
+}
+
+.scan-modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.scan-preview-container {
+  position: relative;
+  width: 100%;
+  max-height: 240px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.scan-preview-image {
+  max-height: 240px;
+  width: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.scan-sweep-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.scan-sweep-overlay[hidden] {
+  display: none !important;
+}
+
+.scan-sweep-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, #ff9933, #10b981, transparent);
+  box-shadow: 0 0 16px 4px rgba(255, 153, 51, 0.8);
+  animation: scanSweep 2s ease-in-out infinite;
+}
+
+@keyframes scanSweep {
+  0% { top: 0%; opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+.scan-status-text {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  animation: pulseText 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes pulseText {
+  from { opacity: 0.7; }
+  to { opacity: 1; }
+}
+
+.scan-safety-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  color: #fbbf24;
+  font-size: 0.88rem;
+}
+
+.scan-safety-note svg {
+  flex-shrink: 0;
+  stroke: #fbbf24;
+}
+
+.scan-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.scan-review-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.scan-review-table th,
+.scan-review-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.scan-review-table th {
+  background: rgba(255, 255, 255, 0.04);
+  font-weight: 600;
+  color: var(--text-muted, #9ca3af);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.scan-row.low-confidence {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-left: 3px solid #f59e0b;
+}
+
+.col-check {
+  width: 36px;
+  text-align: center;
+}
+
+.person-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.scan-input-person,
+.scan-input-amount,
+.scan-input-note {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #ffffff;
+  font-size: 0.88rem;
+}
+
+.scan-input-person {
+  min-width: 110px;
+  flex: 1;
+}
+
+.scan-input-amount {
+  width: 85px;
+}
+
+.scan-input-note {
+  min-width: 100px;
+}
+
+.scan-input-person:focus,
+.scan-input-amount:focus,
+.scan-input-note:focus {
+  outline: none;
+  border-color: var(--accent, #ff9933);
+  box-shadow: 0 0 0 2px rgba(255, 153, 51, 0.2);
+}
+
+.type-toggle {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.type-toggle.type-credit {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.type-toggle.type-payment {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.badge-new {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.25);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.badge-low {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.scan-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+@media (max-width: 640px) {
+  .scan-dialog {
+    max-height: 94vh;
+  }
+  .scan-preview-container {
+    max-height: 180px;
+  }
+  .scan-preview-image {
+    max-height: 180px;
+  }
+  .scan-actions {
+    flex-direction: column-reverse;
+  }
+  .scan-actions button {
+    width: 100%;
   }
 }

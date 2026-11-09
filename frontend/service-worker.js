@@ -1,4 +1,4 @@
-const CACHE_NAME = 'awaaz-khata-shell-v1';
+const CACHE_NAME = 'awaaz-khata-shell-v4';
 const APP_SHELL = [
   '/',
   '/login',
@@ -8,6 +8,7 @@ const APP_SHELL = [
   '/offline.html',
   '/frontend/styles.css',
   '/frontend/app.js',
+  '/frontend/scan.js',
   '/frontend/auth-page.js',
   '/frontend/landing.js',
   '/frontend/settings-page.js',
@@ -41,7 +42,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname === '/voice'
-    || url.pathname === '/confirm' || url.pathname.startsWith('/export/')
+    || url.pathname === '/confirm' || url.pathname === '/scan-notebook' || url.pathname.startsWith('/export/')
     || url.pathname === '/ledger' || url.pathname.startsWith('/customer/')
     || url.pathname.startsWith('/remind/')) return;
 

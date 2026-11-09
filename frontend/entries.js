@@ -26,6 +26,12 @@ export function createEntryCard(entry, onConfirm, onEdit) {
   const note = document.createElement('span');
   note.textContent = entry.note || 'No note';
   meta.append(person, note);
+  if (entry.match_suggestion) {
+    const suggestion = document.createElement('span');
+    suggestion.className = 'entry-match-suggestion';
+    suggestion.textContent = `Heard “${entry.original_person}” — possible match: ${entry.match_suggestion}. Confirm to use this customer.`;
+    meta.appendChild(suggestion);
+  }
 
   const actions = document.createElement('div');
   actions.className = 'entry-actions';

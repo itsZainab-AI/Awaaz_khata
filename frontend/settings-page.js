@@ -25,6 +25,7 @@ try {
   languageSelect.replaceChildren(...languages.map((language) => {
     const option = document.createElement('option');
     option.value = language.code;
+    option.lang = language.code.split('-')[0];
     option.textContent = language.native_label === language.label
       ? language.label
       : `${language.label} — ${language.native_label}`;
@@ -32,6 +33,11 @@ try {
   }));
   form.elements.shop_name.value = result.shop.shop_name;
   form.elements.language.value = result.shop.language;
+  languageSelect.lang = result.shop.language.split('-')[0];
+  languageSelect.addEventListener('change', () => {
+    languageSelect.lang = languageSelect.value.split('-')[0];
+    localStorage.setItem('awaaz-khata-language', languageSelect.value);
+  });
   form.elements.upi_id.value = result.shop.upi_id || '';
   if (result.shop.is_demo) {
     form.querySelector('button[type="submit"]').disabled = true;

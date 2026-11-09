@@ -14,6 +14,7 @@ const showError = (message) => {
 };
 
 const languageSelect = document.querySelector('#form-language');
+const languageStorageKey = 'awaaz-khata-language';
 let languages = [];
 const updateRegistrationCopy = () => {
   const language = languages.find((item) => item.code === languageSelect.value);
@@ -33,17 +34,26 @@ fetch('/api/languages')
     languageSelect.replaceChildren(...languages.map((language) => {
       const option = document.createElement('option');
       option.value = language.code;
+      option.lang = language.code.split('-')[0];
       option.textContent = language.native_label === language.label
         ? language.label
         : `${language.label} — ${language.native_label}`;
       return option;
     }));
-    languageSelect.value = 'hi-en';
+    const savedLanguage = localStorage.getItem(languageStorageKey);
+    languageSelect.value = languages.some((language) => language.code === savedLanguage)
+      ? savedLanguage
+      : 'hi-en';
+    languageSelect.lang = languageSelect.value.split('-')[0];
     updateRegistrationCopy();
   })
   .catch((error) => showError(error.message || 'Supported languages could not be loaded.'));
 
-languageSelect.addEventListener('change', updateRegistrationCopy);
+languageSelect.addEventListener('change', () => {
+  languageSelect.lang = languageSelect.value.split('-')[0];
+  localStorage.setItem(languageStorageKey, languageSelect.value);
+  updateRegistrationCopy();
+});
 
 const submit = async (url, body, button) => {
   errorBox.hidden = true;

@@ -88,6 +88,41 @@
     "expected": [{"person": "रमेश", "amount": 500, "type": "credit_given", "note": "उधार दिए"}]
   },
   {
+    "language": "mr-IN",
+    "transcript": "रमेशला 500 रुपये उधार दिले.",
+    "expected": [{"person": "रमेश", "amount": 500, "type": "credit_given", "note": "उधार दिले"}]
+  },
+  {
+    "language": "mr-IN",
+    "transcript": "रमेशने 300 रुपये परत दिले.",
+    "expected": [{"person": "रमेश", "amount": 300, "type": "payment_received", "note": "परत दिले"}]
+  },
+  {
+    "language": "mr-IN",
+    "transcript": "सुरेशला हजार रुपये उधार दिले.",
+    "expected": [{"person": "सुरेश", "amount": 1000, "type": "credit_given", "note": "उधार दिले"}]
+  },
+  {
+    "language": "mr-IN",
+    "transcript": "रमेशकडून 200 रुपये मिळाले.",
+    "expected": [{"person": "रमेश", "amount": 200, "type": "payment_received", "note": "मिळाले"}]
+  },
+  {
+    "language": "mr-IN",
+    "transcript": "रमेशला ५०० रुपये उधार दिले.",
+    "expected": [{"person": "रमेश", "amount": 500, "type": "credit_given", "note": "उधार दिले"}]
+  },
+  {
+    "language": "mr-IN",
+    "transcript": "सुरेशला पाचशे रुपये उधार दिले.",
+    "expected": [{"person": "सुरेश", "amount": 500, "type": "credit_given", "note": "उधार दिले"}]
+  },
+  {
+    "language": "mr-IN",
+    "transcript": "सीताने दीड हजार रुपये जमा केले.",
+    "expected": [{"person": "सीता", "amount": 1500, "type": "payment_received", "note": "जमा केले"}]
+  },
+  {
     "transcript": "आज सिर्फ दुकान में माल आया, किसी ग्राहक का लेनदेन नहीं हुआ",
     "clarification": true
   },
@@ -109,6 +144,230 @@
   },
   {
     "transcript": "Sita ka balance batao, koi payment ya naya udhaar nahi hua",
+    "clarification": true
+  },
+  {
+    "language": "ta-IN",
+    "provider_only": true,
+    "transcript": "முருகனுக்கு ஐநூறு ரூபாய் கடனாக கொடுத்தேன்",
+    "expected": [{"person": "முருகன்", "amount": 500, "type": "credit_given", "note": "கடனாக கொடுத்தேன்"}]
+  },
+  {
+    "language": "ta-IN",
+    "provider_only": true,
+    "transcript": "லட்சுமி பழைய கடனை ஆயிரம் ரூபாய் கொடுத்து அடைத்தாள்",
+    "expected": [{"person": "லட்சுமி", "amount": 1000, "type": "payment_received", "note": "பழைய கடனை கொடுத்து அடைத்தாள்"}]
+  },
+  {
+    "language": "ta-IN",
+    "provider_only": true,
+    "transcript": "ரமேஷ் கணக்கில் எவ்வளவு பாக்கி இருக்கிறது?",
+    "query_category": "balance",
+    "query_intent": {"intent": "customer_balance", "person": "ரமேஷ்", "days": null},
+    "clarification": true
+  },
+  {
+    "language": "ta-IN",
+    "provider_only": true,
+    "transcript": "முப்பது நாட்களாக பணம் தராதவர்கள் யார்?",
+    "query_category": "unpaid_days",
+    "query_intent": {"intent": "unpaid_since", "person": null, "days": 30},
+    "clarification": true
+  },
+  {
+    "language": "te-IN",
+    "provider_only": true,
+    "transcript": "రమేష్‌కు ఐదు వందల రూపాయలు అప్పుగా ఇచ్చాను",
+    "expected": [{"person": "రమేష్", "amount": 500, "type": "credit_given", "note": "అప్పుగా ఇచ్చాను"}]
+  },
+  {
+    "language": "te-IN",
+    "provider_only": true,
+    "transcript": "సీత పాత బాకీ వెయ్యి రూపాయలు చెల్లించింది",
+    "expected": [{"person": "సీత", "amount": 1000, "type": "payment_received", "note": "పాత బాకీ చెల్లించింది"}]
+  },
+  {
+    "language": "te-IN",
+    "provider_only": true,
+    "transcript": "రమేష్ ఖాతాలో ఎంత బాకీ ఉంది?",
+    "query_category": "balance",
+    "query_intent": {"intent": "customer_balance", "person": "రమేష్", "days": null},
+    "clarification": true
+  },
+  {
+    "language": "te-IN",
+    "provider_only": true,
+    "transcript": "ఎవరెవరు ముప్పై రోజులుగా డబ్బు చెల్లించలేదు?",
+    "query_category": "unpaid_days",
+    "query_intent": {"intent": "unpaid_since", "person": null, "days": 30},
+    "clarification": true
+  },
+  {
+    "language": "gu-IN",
+    "provider_only": true,
+    "transcript": "રમેશને પાંચસો રૂપિયા ઉધાર આપ્યા",
+    "expected": [{"person": "રમેશ", "amount": 500, "type": "credit_given", "note": "ઉધાર આપ્યા"}]
+  },
+  {
+    "language": "gu-IN",
+    "provider_only": true,
+    "transcript": "સીતાએ જૂનું ઉધાર હજાર રૂપિયા ચૂકવ્યું",
+    "expected": [{"person": "સીતા", "amount": 1000, "type": "payment_received", "note": "જૂનું ઉધાર ચૂકવ્યું"}]
+  },
+  {
+    "language": "gu-IN",
+    "provider_only": true,
+    "transcript": "રમેશના ખાતામાં કેટલું બાકી છે?",
+    "query_category": "balance",
+    "query_intent": {"intent": "customer_balance", "person": "રમેશ", "days": null},
+    "clarification": true
+  },
+  {
+    "language": "gu-IN",
+    "provider_only": true,
+    "transcript": "ત્રીસ દિવસથી પૈસા ન આપનાર કોણ છે?",
+    "query_category": "unpaid_days",
+    "query_intent": {"intent": "unpaid_since", "person": null, "days": 30},
+    "clarification": true
+  },
+  {
+    "language": "bn-IN",
+    "provider_only": true,
+    "transcript": "রাকেশকে পাঁচশো টাকা ধার দিলাম",
+    "expected": [{"person": "রাকেশ", "amount": 500, "type": "credit_given", "note": "ধার দিলাম"}]
+  },
+  {
+    "language": "bn-IN",
+    "provider_only": true,
+    "transcript": "সীতা পুরনো ধার এক হাজার টাকা দিয়ে শোধ করল",
+    "expected": [{"person": "সীতা", "amount": 1000, "type": "payment_received", "note": "পুরনো ধার দিয়ে শোধ করল"}]
+  },
+  {
+    "language": "bn-IN",
+    "provider_only": true,
+    "transcript": "রাকেশের খাতায় কত টাকা বাকি আছে?",
+    "query_category": "balance",
+    "query_intent": {"intent": "customer_balance", "person": "রাকেশ", "days": null},
+    "clarification": true
+  },
+  {
+    "language": "bn-IN",
+    "provider_only": true,
+    "transcript": "ত্রিশ দিন ধরে কারা টাকা দেয়নি?",
+    "query_category": "unpaid_days",
+    "query_intent": {"intent": "unpaid_since", "person": null, "days": 30},
+    "clarification": true
+  },
+  {
+    "language": "kn-IN",
+    "provider_only": true,
+    "transcript": "ರಮೇಶ್‌ಗೆ ಐನೂರು ರೂಪಾಯಿ ಸಾಲವಾಗಿ ಕೊಟ್ಟೆ",
+    "expected": [{"person": "ರಮೇಶ್", "amount": 500, "type": "credit_given", "note": "ಸಾಲವಾಗಿ ಕೊಟ್ಟೆ"}]
+  },
+  {
+    "language": "kn-IN",
+    "provider_only": true,
+    "transcript": "ಸೀತಾ ಹಳೆಯ ಬಾಕಿಯನ್ನು ಸಾವಿರ ರೂಪಾಯಿ ಕೊಟ್ಟು ತೀರಿಸಿದಳು",
+    "expected": [{"person": "ಸೀತಾ", "amount": 1000, "type": "payment_received", "note": "ಹಳೆಯ ಬಾಕಿಯನ್ನು ಕೊಟ್ಟು ತೀರಿಸಿದಳು"}]
+  },
+  {
+    "language": "kn-IN",
+    "provider_only": true,
+    "transcript": "ರಮೇಶ್ ಖಾತೆಯಲ್ಲಿ ಎಷ್ಟು ಬಾಕಿ ಇದೆ?",
+    "query_category": "balance",
+    "query_intent": {"intent": "customer_balance", "person": "ರಮೇಶ್", "days": null},
+    "clarification": true
+  },
+  {
+    "language": "kn-IN",
+    "provider_only": true,
+    "transcript": "ಮೂವತ್ತು ದಿನಗಳಿಂದ ಹಣ ಕೊಡದವರು ಯಾರು?",
+    "query_category": "unpaid_days",
+    "query_intent": {"intent": "unpaid_since", "person": null, "days": 30},
+    "clarification": true
+  },
+  {
+    "language": "ml-IN",
+    "provider_only": true,
+    "transcript": "രമേശിന് അഞ്ഞൂറ് രൂപ കടമായി കൊടുത്തു",
+    "expected": [{"person": "രമേശ്", "amount": 500, "type": "credit_given", "note": "കടമായി കൊടുത്തു"}]
+  },
+  {
+    "language": "ml-IN",
+    "provider_only": true,
+    "transcript": "സീത പഴയ കടം ആയിരം രൂപ നൽകി തീർത്തു",
+    "expected": [{"person": "സീത", "amount": 1000, "type": "payment_received", "note": "പഴയ കടം നൽകി തീർത്തു"}]
+  },
+  {
+    "language": "ml-IN",
+    "provider_only": true,
+    "transcript": "രമേശിന്റെ കണക്കിൽ എത്ര ബാക്കി ഉണ്ട്?",
+    "query_category": "balance",
+    "query_intent": {"intent": "customer_balance", "person": "രമേശ്", "days": null},
+    "clarification": true
+  },
+  {
+    "language": "ml-IN",
+    "provider_only": true,
+    "transcript": "മുപ്പത് ദിവസമായി പണം തരാത്തവർ ആരാണ്?",
+    "query_category": "unpaid_days",
+    "query_intent": {"intent": "unpaid_since", "person": null, "days": 30},
+    "clarification": true
+  },
+  {
+    "language": "pa-IN",
+    "provider_only": true,
+    "transcript": "ਰਮੇਸ਼ ਨੂੰ ਪੰਜ ਸੌ ਰੁਪਏ ਉਧਾਰ ਦਿੱਤੇ",
+    "expected": [{"person": "ਰਮੇਸ਼", "amount": 500, "type": "credit_given", "note": "ਉਧਾਰ ਦਿੱਤੇ"}]
+  },
+  {
+    "language": "pa-IN",
+    "provider_only": true,
+    "transcript": "ਸੀਤਾ ਨੇ ਪੁਰਾਣਾ ਉਧਾਰ ਇੱਕ ਹਜ਼ਾਰ ਰੁਪਏ ਦੇ ਕੇ ਚੁਕਾਇਆ",
+    "expected": [{"person": "ਸੀਤਾ", "amount": 1000, "type": "payment_received", "note": "ਪੁਰਾਣਾ ਉਧਾਰ ਦੇ ਕੇ ਚੁਕਾਇਆ"}]
+  },
+  {
+    "language": "pa-IN",
+    "provider_only": true,
+    "transcript": "ਰਮੇਸ਼ ਦੇ ਖਾਤੇ ਵਿੱਚ ਕਿੰਨਾ ਬਕਾਇਆ ਹੈ?",
+    "query_category": "balance",
+    "query_intent": {"intent": "customer_balance", "person": "ਰਮੇਸ਼", "days": null},
+    "clarification": true
+  },
+  {
+    "language": "pa-IN",
+    "provider_only": true,
+    "transcript": "ਤੀਹ ਦਿਨਾਂ ਤੋਂ ਪੈਸੇ ਨਾ ਦੇਣ ਵਾਲੇ ਕੌਣ ਹਨ?",
+    "query_category": "unpaid_days",
+    "query_intent": {"intent": "unpaid_since", "person": null, "days": 30},
+    "clarification": true
+  },
+  {
+    "language": "en-IN",
+    "provider_only": true,
+    "transcript": "I gave Ramesh five hundred rupees on credit",
+    "expected": [{"person": "Ramesh", "amount": 500, "type": "credit_given", "note": "on credit"}]
+  },
+  {
+    "language": "en-IN",
+    "provider_only": true,
+    "transcript": "Sita paid one thousand rupees toward her old balance",
+    "expected": [{"person": "Sita", "amount": 1000, "type": "payment_received", "note": "toward her old balance"}]
+  },
+  {
+    "language": "en-IN",
+    "provider_only": true,
+    "transcript": "How much does Ramesh still owe?",
+    "query_category": "balance",
+    "query_intent": {"intent": "customer_balance", "person": "Ramesh", "days": null},
+    "clarification": true
+  },
+  {
+    "language": "en-IN",
+    "provider_only": true,
+    "transcript": "Who has not paid for thirty days?",
+    "query_category": "unpaid_days",
+    "query_intent": {"intent": "unpaid_since", "person": null, "days": 30},
     "clarification": true
   }
 ]

@@ -2,6 +2,7 @@ import { initMicVisualizer } from './mic-visualizer.js';
 import { createEntryCard } from './entries.js';
 import { createLedgerRow, createTimelineEntry } from './ledger.js';
 import { emitParticles, vibrate, showNotice } from './effects.js';
+import { setupScanFeature } from './scan.js';
 
 const ui = {
   splash: document.querySelector('#splash-screen'),
@@ -11,6 +12,7 @@ const ui = {
   micStatus: document.querySelector('#mic-status'),
   transcriptText: document.querySelector('#transcript-text'),
   transcriptState: document.querySelector('#transcript-state'),
+  detectedLanguage: document.querySelector('#detected-language'),
   transcriptOriginal: document.querySelector('#transcript-original'),
   transcriptFeedback: document.querySelector('#transcript-feedback'),
   notice: document.querySelector('#notice'),
@@ -24,7 +26,7 @@ const ui = {
   summaryStats: document.querySelector('#summary-stats'),
   summaryChart: document.querySelector('#summary-chart'),
   refreshLedger: document.querySelector('#refresh-ledger'),
-  languageSelect: document.querySelector('#language-toggle'),
+  languageToggle: document.querySelector('#language-toggle'),
   customerDrawer: document.querySelector('#customer-drawer'),
   drawerHandle: document.querySelector('.drawer-handle'),
   drawerAvatar: document.querySelector('#drawer-avatar'),
@@ -38,6 +40,26 @@ const ui = {
   reminderMessage: document.querySelector('#reminder-message'),
   reminderActions: document.querySelector('#reminder-actions'),
   pointerGlow: document.querySelector('#pointer-glow'),
+  scanButton: document.querySelector('#scan-button'),
+  scanFileInput: document.querySelector('#scan-file-input'),
+  scanModal: document.querySelector('#scan-modal'),
+  scanBackdrop: document.querySelector('#scan-backdrop'),
+  scanCloseButton: document.querySelector('#scan-close-button'),
+  scanCancelButton: document.querySelector('#scan-cancel-button'),
+  scanConfirmButton: document.querySelector('#scan-confirm-button'),
+  scanPreviewImage: document.querySelector('#scan-preview-image'),
+  scanSweepOverlay: document.querySelector('#scan-sweep-overlay'),
+  scanStatusText: document.querySelector('#scan-status-text'),
+  scanTableWrap: document.querySelector('#scan-table-wrap'),
+  scanTableBody: document.querySelector('#scan-table-body'),
+  scanSelectAll: document.querySelector('#scan-select-all'),
+  scanButtonLabel: document.querySelector('#scan-button-label'),
+  scanModalTitle: document.querySelector('#scan-modal-title'),
+  scanSafetyText: document.querySelector('#scan-safety-text'),
+  thPerson: document.querySelector('#th-person'),
+  thAmount: document.querySelector('#th-amount'),
+  thType: document.querySelector('#th-type'),
+  thNote: document.querySelector('#th-note'),
 };
 
 const state = {
@@ -52,7 +74,10 @@ const state = {
   pointerId: null,
   isProcessing: false,
   selectedLanguage: 'hi-en',
+  languageStorageKey: 'awaaz-khata-language',
+  hasStoredLanguage: false,
   languages: [],
+  detectedLanguage: null,
   transliterateTranscript: false,
   originalTranscript: '',
   transcriptFeedback: '',
@@ -63,18 +88,59 @@ const state = {
 };
 
 const micVisualizer = initMicVisualizer(document.querySelector('#mic-canvas'));
+ui.micButton.disabled = true;
 
-const setLanguage = (value) => {
-  const language = state.languages.find((item) => item.code === value);
-  if (!language) throw new Error(`Unsupported language: ${value}`);
-  state.selectedLanguage = value;
-  state.voiceLanguage = value;
-  state.speechLanguage = value;
+const setLanguage = (code) => {
+  if (code === 'auto') {
+    state.selectedLanguage = 'auto';
+    state.voiceLanguage = 'indic-auto';
+    state.speechLanguage = 'auto';
+    state.transliterateTranscript = false;
+    localStorage.setItem(state.languageStorageKey, code);
+    ui.languageToggle.querySelectorAll('button').forEach((button) => {
+      const active = button.dataset.language === code;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    if (state.originalTranscript) {
+      setTranscript(state.originalTranscript, state.transcriptFeedback);
+    }
+    if (typeof scanFeature !== 'undefined' && scanFeature?.updateLabels) {
+      scanFeature.updateLabels();
+    }
+    return;
+  }
+  const language = state.languages.find((item) => item.code === code);
+  if (!language) throw new Error(`Unsupported language: ${code}`);
+  state.selectedLanguage = language.code;
+  state.voiceLanguage = language.stt_code;
+  state.speechLanguage = language.tts_code;
   state.transliterateTranscript = language.transliterate_transcript;
-  ui.languageSelect.value = value;
+  localStorage.setItem(state.languageStorageKey, language.code);
+  ui.languageToggle.querySelectorAll('button').forEach((button) => {
+    const active = button.dataset.language === language.code;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
   if (state.originalTranscript) {
     setTranscript(state.originalTranscript, state.transcriptFeedback);
   }
+  if (typeof scanFeature !== 'undefined' && scanFeature?.updateLabels) {
+    scanFeature.updateLabels();
+  }
+};
+
+const setDetectedLanguage = (detectedLanguage) => {
+  state.detectedLanguage = detectedLanguage || null;
+  if (!state.detectedLanguage) {
+    ui.detectedLanguage.hidden = true;
+    ui.detectedLanguage.textContent = '';
+    return;
+  }
+  ui.detectedLanguage.textContent =
+    `Detected: ${state.detectedLanguage.native_label} (${state.detectedLanguage.label})`;
+  ui.detectedLanguage.lang = state.detectedLanguage.code.split('-')[0];
+  ui.detectedLanguage.hidden = false;
 };
 
 const devanagariLetters = {
@@ -131,10 +197,16 @@ const setTranscript = (transcript, feedback = '', status = 'done') => {
   const original = String(transcript || '').trim();
   state.originalTranscript = original;
   state.transcriptFeedback = feedback;
+  const language = state.languages.find((item) => item.code === state.selectedLanguage);
+  const scriptLanguage = language
+    ? (language.code === 'hi-en' ? 'en' : language.code.split('-')[0])
+    : (state.detectedLanguage?.code.split('-')[0] || 'hi');
   const display = state.transliterateTranscript
     ? transliterateDevanagari(original)
     : original;
+  ui.transcriptText.lang = scriptLanguage;
   ui.transcriptText.textContent = display;
+  ui.transcriptOriginal.lang = scriptLanguage;
   ui.transcriptOriginal.textContent = original ? `Original: ${original}` : '';
   ui.transcriptOriginal.hidden = !original;
   ui.transcriptFeedback.textContent = feedback;
@@ -376,6 +448,7 @@ const toWav = async (blob) => {
 };
 
 const submitVoice = async (waveBlob) => {
+  setDetectedLanguage(null);
   state.isProcessing = true;
   setBusy(true);
   setMicButtonMode('processing');
@@ -398,6 +471,7 @@ const submitVoice = async (waveBlob) => {
     if (!response.ok) {
       throw new Error(result.detail || 'Voice processing failed.');
     }
+    setDetectedLanguage(result.detected_language);
 
     if (result.status === 'unrecognized' || result.status === 'clarification_required') {
       const message = result.message || result.clarification_question;
@@ -497,6 +571,8 @@ const renderEntries = () => {
       const edited = window.prompt(`Edit customer name for this entry:`, next);
       if (edited && edited.trim()) {
         entry.person = edited.trim();
+        delete entry.original_person;
+        delete entry.match_suggestion;
         renderEntries();
       }
     });
@@ -695,6 +771,13 @@ const loadLedger = async () => {
   }
 };
 
+const scanFeature = setupScanFeature({
+  ...ui,
+  getSelectedLanguage: () => state.selectedLanguage,
+  showNotice: showTransientNotice,
+  refreshLedger: loadLedger,
+});
+
 const playExampleSentence = async () => {
   try {
     const response = await fetch(
@@ -858,8 +941,14 @@ ui.customerDrawer.addEventListener('click', (event) => {
   if (event.target.dataset.close === 'drawer') closeCustomerDrawer();
 });
 
-ui.languageSelect.addEventListener('change', () => {
-  const language = state.languages.find((item) => item.code === ui.languageSelect.value);
+ui.languageToggle.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-language]');
+  if (button?.dataset.language === 'auto') {
+    setLanguage('auto');
+    showTransientNotice('Language will be detected automatically.', '');
+    return;
+  }
+  const language = state.languages.find((item) => item.code === button?.dataset.language);
   if (!language) return;
   setLanguage(language.code);
   showTransientNotice(`Language set to ${language.native_label}.`, '');
@@ -895,21 +984,29 @@ const languagesReady = fetch('/api/languages')
       throw new Error('No supported languages are available.');
     }
     state.languages = languages;
-    ui.languageSelect.replaceChildren(...languages.map((language) => {
-      const option = document.createElement('option');
-      option.value = language.code;
-      option.textContent = language.native_label === language.label
-        ? language.label
-        : `${language.label} — ${language.native_label}`;
-      return option;
+    const languageButtons = [
+      { code: 'auto', label: 'Auto', native_label: 'Auto' },
+      ...languages,
+    ];
+    ui.languageToggle.replaceChildren(...languageButtons.map((language) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.language = language.code;
+      button.lang = language.code.split('-')[0];
+      button.textContent = language.native_label;
+      button.setAttribute('aria-label', `${language.label} (${language.code})`);
+      button.setAttribute('aria-pressed', 'false');
+      return button;
     }));
-    setLanguage(languages.some((language) => language.code === state.selectedLanguage)
-      ? state.selectedLanguage
-      : languages[0].code);
+    const savedLanguage = localStorage.getItem(state.languageStorageKey);
+    state.hasStoredLanguage = savedLanguage === 'auto'
+      || languages.some((language) => language.code === savedLanguage);
+    setLanguage(state.hasStoredLanguage ? savedLanguage : languages[0].code);
+    ui.micButton.disabled = false;
     return true;
   })
   .catch((error) => {
-    ui.languageSelect.disabled = true;
+    ui.languageToggle.setAttribute('aria-disabled', 'true');
     ui.micButton.disabled = true;
     showTransientNotice(error.message || 'Supported languages could not be loaded.', 'error');
     return false;
@@ -926,7 +1023,8 @@ fetch('/api/me')
   })
   .then(async (result) => {
     if (result) {
-      if (await languagesReady && state.languages.some((language) => language.code === result.shop.language)) {
+      if (await languagesReady && !state.hasStoredLanguage
+        && state.languages.some((language) => language.code === result.shop.language)) {
         setLanguage(result.shop.language);
       }
       loadLedger();

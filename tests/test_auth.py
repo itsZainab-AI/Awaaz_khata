@@ -29,7 +29,7 @@ def register(client: TestClient, phone: str, shop_name: str) -> dict:
 
 class AuthAndIsolationTests(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.database_path = Path(self.temp_dir.name) / "auth.sqlite3"
         self.app = create_app(self.database_path)
         self.client = TestClient(self.app)
@@ -184,8 +184,8 @@ class AuthAndIsolationTests(unittest.TestCase):
 
         with sqlite3.connect(self.database_path) as connection:
             connection.execute(
-                "UPDATE transactions SET note = 'changed' WHERE shop_id = "
-                "(SELECT id FROM shops WHERE is_demo = 1) LIMIT 1"
+                "UPDATE transactions SET note = 'changed' WHERE id = "
+                "(SELECT id FROM transactions WHERE shop_id = (SELECT id FROM shops WHERE is_demo = 1) LIMIT 1)"
             )
             connection.execute(
                 "UPDATE shops SET demo_reset_at = 0 WHERE is_demo = 1"
